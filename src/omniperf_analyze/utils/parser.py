@@ -409,9 +409,11 @@ def build_dfs(archConfigs, filter_metrics):
         for data_source in panel["data source"]:
             for type, data_cofig in data_source.items():
                 if type == "metric_table":
-                    metric_list[panel_idx] = panel["title"]
+                    if "title" in panel:
+                        metric_list[panel_idx] = panel["title"]
                     table_idx = panel_idx + "." + str(data_cofig["id"] % 100)
-                    metric_list[table_idx] = data_cofig["title"]
+                    if "title" in data_cofig:
+                        metric_list[table_idx] = data_cofig["title"]
 
                     headers = ["Index"]
                     for key, tile in data_cofig["header"].items():
