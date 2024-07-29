@@ -334,6 +334,10 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                 # Normal counters
                 for ctr in counters:
 
+                    # v3 doesn't seem to support this counter
+                    if ctr.startswith("TCC_BUBBLE"):
+                        continue
+
                     # Channel counter e.g. TCC_ATOMIC[0]
                     if "[" in ctr:
 
@@ -341,7 +345,10 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                         # add the channel numbers back later
                         channel = int(ctr.split("[")[1].split("]")[0])
                         if channel == 0:
-                            counter_name = ctr.split("[")[0] + "_expand"
+                            #counter_name = ctr.split("[")[0] + "_expand"
+                            # TCC channel number not needed in v3
+                            # TODO: Detect rocprof version?
+                            counter_name = ctr.split("[")[0]
                             try:
                                 normal_counters[counter_name] += 1
                             except:
