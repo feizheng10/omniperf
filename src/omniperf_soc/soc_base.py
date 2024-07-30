@@ -298,6 +298,9 @@ class CounterFile:
 
         return self.blocks[block].add(counter)
 
+# TODO: This is a HACK
+def using_v3():
+    return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"] == "rocprofv3"
 
 @demarcate
 def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
@@ -335,8 +338,9 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                 for ctr in counters:
 
                     # v3 doesn't seem to support this counter
-                    if ctr.startswith("TCC_BUBBLE"):
-                        continue
+                    if using_v3():
+                        if ctr.startswith("TCC_BUBBLE"):
+                            continue
 
                     # Channel counter e.g. TCC_ATOMIC[0]
                     if "[" in ctr:
@@ -345,10 +349,13 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                         # add the channel numbers back later
                         channel = int(ctr.split("[")[1].split("]")[0])
                         if channel == 0:
-                            #counter_name = ctr.split("[")[0] + "_expand"
                             # TCC channel number not needed in v3
-                            # TODO: Detect rocprof version?
-                            counter_name = ctr.split("[")[0]
+                            # TODO: This is a HACK 
+                            if using_v3():
+                                counter_name = ctr.split("[")[0]
+                            else:
+                                counter_name = ctr.split("[")[0] + "_expand"
+
                             try:
                                 normal_counters[counter_name] += 1
                             except:
