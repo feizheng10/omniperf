@@ -48,6 +48,9 @@ class rocprof_v3_profiler(OmniProfiler_Base):
             # v3 requires output directory argument
             "-d",
             self.get_args().path + "/" + "out",
+            "--kernel-trace",
+            "--output-format",
+            "json",
             "--"
         ]
         args.extend(app_cmd)
@@ -83,4 +86,4 @@ class rocprof_v3_profiler(OmniProfiler_Base):
             # Manually join each pmc_perf*.csv output
             self.join_prof()
             # Replace timestamp data to solve a known rocprof bug
-            replace_timestamps(self.get_args().path)
+            #replace_timestamps(self.get_args().path)

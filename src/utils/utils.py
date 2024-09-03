@@ -27,6 +27,8 @@ import logging
 import sys
 import os
 import io
+import json
+import pathlib
 import re
 import selectors
 import subprocess
@@ -35,6 +37,7 @@ import pandas as pd
 import glob
 from pathlib import Path as path
 import config
+from collections import OrderedDict
 
 rocprof_cmd = ""
 
@@ -238,6 +241,129 @@ def capture_subprocess_output(subprocess_args, new_env=None, profileMode=False):
 
     return (success, output)
 
+# Create a dictionary that maps agent ID to agent objects
+def get_agent_dict(data):
+    agents = data['rocprofiler-sdk-tool'][0]['agents']
+
+    agent_map = {}
+
+    for agent in agents:
+        agent_id = agent['id']['handle']
+        agent_map[agent_id] = agent
+    
+    return agent_map
+
+# Create a dictionary that maps counter ID to counter objects
+def get_counter_dict(data):
+    counters = data['rocprofiler-sdk-tool'][0]['counters']
+
+    counter_map = {}
+
+    for counter in counters:
+        counter_id = counter['id']['handle']
+        agent_id = counter['agent_id']['handle']
+
+        counter_map[(agent_id, counter_id)] = counter
+    
+    return counter_map
+
+def get_dispatch_records(data):
+    records = data['rocprofiler-sdk-tool'][0]['buffer_records']
+
+    records_map = {}
+
+    for rec in records['kernel_dispatch']:
+        id = rec['correlation_id']['internal']
+
+        records_map[id] = rec
+
+    return records_map
+
+def convert_to_csv(json_file_path, csv_file_path):
+
+    f = open(json_file_path, 'rt')
+    data = json.load(f)
+
+    dispatch_records = get_dispatch_records(data)
+    dispatches = data['rocprofiler-sdk-tool'][0]['callback_records']['counter_collection']
+    kernel_symbols = data['rocprofiler-sdk-tool'][0]['kernel_symbols']
+    agents = get_agent_dict(data)
+    pid = data['rocprofiler-sdk-tool'][0]['metadata']['pid']
+
+    counter_info = get_counter_dict(data)
+
+    csv_data = {}
+
+    for d in dispatches:
+
+        dispatch_info = d['dispatch_data']['dispatch_info']
+
+        agent_id = dispatch_info['agent_id']['handle']
+
+        info = OrderedDict()
+
+        info['Dispatch_ID'] = dispatch_info['dispatch_id']
+        info['GPU_ID'] = agents[agent_id]['node_id']
+        info['Queue_ID'] = dispatch_info['queue_id']
+        info['PID'] = pid
+        info['TID'] = d['thread_id']
+        
+        grid_size = dispatch_info['grid_size']
+        info['Grid_Size'] = grid_size['x'] * grid_size['y'] * grid_size['z']
+        
+        wg = dispatch_info['workgroup_size']
+        info['Workgroup_Size'] = wg['x'] * wg['y'] * wg['z']
+        
+        info['LDS_Per_Workgroup'] = d['lds_block_size_v']
+
+        # TODO: Scratch per Work Item
+        info['Scratch_Per_Workitem'] = 0
+        info['Arch_VGPR'] = d['arch_vgpr_count']
+
+        # TODO: Accum VGPR
+        info['Accum_VGPR'] = 0
+
+        info['SGPR'] = d['sgpr_count']
+        info['Wave_Size'] = agents[agent_id]['wave_front_size']
+        
+        kernel_id = dispatch_info['kernel_id']
+        info['Kernel_Name'] = kernel_symbols[kernel_id]['formatted_kernel_name']
+
+        id = d['dispatch_data']['correlation_id']['internal']
+        rec = dispatch_records[id]
+
+        info['Start_Timestamp'] = rec['start_timestamp']
+        info['End_Timestamp'] = rec['end_timestamp']
+        info['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
+
+        # get counters
+        counters = {}
+ 
+        records = d['records']
+        for r in records:
+            id = r['counter_id']['handle']
+            value = r['value']
+            name = None
+
+            name = counter_info[(agent_id, id)]['name']
+
+            counters[name] = value
+
+        # Append counters to this dispatch
+        for key in counters.keys():
+            info[key] = counters[key]
+        
+        # Add dispatch into to CSV info
+        for key in info.keys():
+            if key not in csv_data:
+                csv_data[key] = []
+
+            csv_data[key].append(info[key])
+
+    df = pd.DataFrame(csv_data)
+
+    df.to_csv(csv_file_path, index=False)
+
 
 def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
 
@@ -299,8 +425,15 @@ def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
         )
 
     if rocprof_cmd.endswith("v3"):
-        # rocprofv2 has separate csv files for each process
-        results_files = glob.glob(workload_dir + "/out/pmc_1/*_counter_collection.csv")
+        results_files = glob.glob(workload_dir + "/out/pmc_1/*.json")
+        results_files.extend(glob.glob(workload_dir + "/out/*.json"))
+
+        for json_file in results_files:
+            csv_file = pathlib.Path(json_file).with_suffix('.csv')
+            convert_to_csv(json_file, csv_file)
+
+        results_files = glob.glob(workload_dir + "/out/pmc_1/*.csv")
+        results_files.extend(glob.glob(workload_dir + "/out/*.csv"))
 
         # Combine results into single CSV file
         combined_results = pd.concat(

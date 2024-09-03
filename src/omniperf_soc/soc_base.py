@@ -439,9 +439,10 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
         fd.close()
 
     # Add a timestamp file
-    fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
-    fd.write("pmc:\n\n")
-    fd.write("gpu:\n")
-    fd.write("range:\n")
-    fd.write("kernel:\n")
-    fd.close()
+    if not using_v3():
+        fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
+        fd.write("pmc:\n\n")
+        fd.write("gpu:\n")
+        fd.write("range:\n")
+        fd.write("kernel:\n")
+        fd.close()
