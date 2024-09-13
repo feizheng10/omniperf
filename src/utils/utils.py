@@ -304,7 +304,7 @@ def convert_to_csv(json_file_path, csv_file_path):
 
         info['Dispatch_ID'] = dispatch_info['dispatch_id']
         info['GPU_ID'] = agents[agent_id]['node_id']
-        info['Queue_ID'] = dispatch_info['queue_id']
+        info['Queue_ID'] = dispatch_info['queue_id']['handle']
         info['PID'] = pid
         info['TID'] = d['thread_id']
         
