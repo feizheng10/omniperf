@@ -345,16 +345,12 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                     # Channel counter e.g. TCC_ATOMIC[0]
                     if "[" in ctr:
 
-                        # Remove channel number, append "_expand" so we know
-                        # add the channel numbers back later
+                        # Remove channel number, append "_sum" so rocprof will
+                        # sum the counters for us instead of specifying every
+                        # channel.
                         channel = int(ctr.split("[")[1].split("]")[0])
                         if channel == 0:
-                            # TCC channel number not needed in v3
-                            # TODO: This is a HACK 
-                            if using_v3():
-                                counter_name = ctr.split("[")[0]
-                            else:
-                                counter_name = ctr.split("[")[0] + "_expand"
+                            counter_name = ctr.split("[")[0] + "_sum"
 
                             try:
                                 normal_counters[counter_name] += 1
@@ -407,26 +403,9 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
 
         pmc = []
         for block_name in f.blocks.keys():
-            if block_name == "TCC":
+            for ctr in f.blocks[block_name].elements:
+                pmc.append(ctr)
 
-                # Expand and interleve the TCC channel counters
-                # e.g.  TCC_HIT[0] TCC_ATOMIC[0] ... TCC_HIT[1] TCC_ATOMIC[1] ...
-                channel_counters = []
-                for ctr in f.blocks[block_name].elements:
-                    if "_expand" in ctr:
-                        channel_counters.append(ctr.split("_expand")[0])
-
-                for i in range(0, perfmon_config["TCC_channels"]):
-                    for c in channel_counters:
-                        pmc.append("{}[{}]".format(c, i))
-
-                # Handle the rest of the TCC counters
-                for ctr in f.blocks[block_name].elements:
-                    if "_expand" not in ctr:
-                        pmc.append(ctr)
-            else:
-                for ctr in f.blocks[block_name].elements:
-                    pmc.append(ctr)
 
         stext = "pmc: " + " ".join(pmc)
 
