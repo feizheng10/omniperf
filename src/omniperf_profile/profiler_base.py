@@ -167,6 +167,8 @@ class OmniProfiler_Base:
                         "TID",
                         "SIG",
                         "OBJ",
+                        "Correlation_ID_",
+                        "Wave_Size_",
                         # rocscope specific merged counters, keep original
                         "dispatch_",
                         # extras

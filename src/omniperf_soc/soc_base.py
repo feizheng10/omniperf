@@ -418,6 +418,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
         fd.close()
 
     # Add a timestamp file
+    # TODO: Does v3 need this?
     if not using_v3():
         fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
         fd.write("pmc:\n\n")
