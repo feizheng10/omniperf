@@ -336,18 +336,21 @@ def convert_to_csv(json_file_path, csv_file_path):
         info['End_Timestamp'] = rec['end_timestamp']
         info['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
 
-        # get counters
+        # Get counters
         counters = {}
  
         records = d['records']
         for r in records:
             id = r['counter_id']['handle']
             value = r['value']
-            name = None
 
             name = counter_info[(agent_id, id)]['name']
 
-            counters[name] = value
+            # Some counters appear multiple times and need to be summed
+            if name in counters:
+                counters[name] += value
+            else: 
+                counters[name] = value
 
         # Append counters to this dispatch
         for key in counters.keys():
