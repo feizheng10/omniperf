@@ -292,7 +292,31 @@ def convert_to_csv(json_file_path, csv_file_path):
 
     counter_info = get_counter_dict(data)
 
+    cols = dict.fromkeys([
+        'Dispatch_ID',
+        'GPU_ID',
+        'Queue_ID',
+        'PID',
+        'TID',
+        'Grid_Size',
+        'Workgroup_Size',
+        'LDS_Per_Workgroup',
+        'Scratch_Per_Workitem',
+        'Arch_VGPR',
+        'Accum_VGPR',
+        'SGPR',
+        'Wave_Size',
+        'Kernel_Name',
+        'Start_Timestamp',
+        'End_Timestamp',
+        'Correlation_ID',
+    ])
+
     csv_data = {}
+    
+    # Add dispatch into to CSV info
+    for col in cols.keys():
+        csv_data[col] = []
 
     for d in dispatches:
 
@@ -300,41 +324,41 @@ def convert_to_csv(json_file_path, csv_file_path):
 
         agent_id = dispatch_info['agent_id']['handle']
 
-        info = OrderedDict()
+        cols = OrderedDict()
 
-        info['Dispatch_ID'] = dispatch_info['dispatch_id']
-        info['GPU_ID'] = agents[agent_id]['node_id']
-        info['Queue_ID'] = dispatch_info['queue_id']['handle']
-        info['PID'] = pid
-        info['TID'] = d['thread_id']
+        cols['Dispatch_ID'] = dispatch_info['dispatch_id']
+        cols['GPU_ID'] = agents[agent_id]['node_id']
+        cols['Queue_ID'] = dispatch_info['queue_id']['handle']
+        cols['PID'] = pid
+        cols['TID'] = d['thread_id']
         
         grid_size = dispatch_info['grid_size']
-        info['Grid_Size'] = grid_size['x'] * grid_size['y'] * grid_size['z']
+        cols['Grid_Size'] = grid_size['x'] * grid_size['y'] * grid_size['z']
         
         wg = dispatch_info['workgroup_size']
-        info['Workgroup_Size'] = wg['x'] * wg['y'] * wg['z']
+        cols['Workgroup_Size'] = wg['x'] * wg['y'] * wg['z']
         
-        info['LDS_Per_Workgroup'] = d['lds_block_size_v']
+        cols['LDS_Per_Workgroup'] = d['lds_block_size_v']
 
         # TODO: Scratch per Work Item
-        info['Scratch_Per_Workitem'] = 0
-        info['Arch_VGPR'] = d['arch_vgpr_count']
+        cols['Scratch_Per_Workitem'] = 0
+        cols['Arch_VGPR'] = d['arch_vgpr_count']
 
         # TODO: Accum VGPR
-        info['Accum_VGPR'] = 0
+        cols['Accum_VGPR'] = 0
 
-        info['SGPR'] = d['sgpr_count']
-        info['Wave_Size'] = agents[agent_id]['wave_front_size']
+        cols['SGPR'] = d['sgpr_count']
+        cols['Wave_Size'] = agents[agent_id]['wave_front_size']
         
         kernel_id = dispatch_info['kernel_id']
-        info['Kernel_Name'] = kernel_symbols[kernel_id]['formatted_kernel_name']
+        cols['Kernel_Name'] = kernel_symbols[kernel_id]['formatted_kernel_name']
 
         id = d['dispatch_data']['correlation_id']['internal']
         rec = dispatch_records[id]
 
-        info['Start_Timestamp'] = rec['start_timestamp']
-        info['End_Timestamp'] = rec['end_timestamp']
-        info['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
+        cols['Start_Timestamp'] = rec['start_timestamp']
+        cols['End_Timestamp'] = rec['end_timestamp']
+        cols['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
 
         # Get counters
         counters = {}
@@ -354,14 +378,14 @@ def convert_to_csv(json_file_path, csv_file_path):
 
         # Append counters to this dispatch
         for key in counters.keys():
-            info[key] = counters[key]
+            cols[key] = counters[key]
         
         # Add dispatch into to CSV info
-        for key in info.keys():
-            if key not in csv_data:
-                csv_data[key] = []
+        for col in cols.keys():
+            if col not in csv_data:
+                csv_data[col] = []
 
-            csv_data[key].append(info[key])
+            csv_data[col].append(cols[col])
 
     df = pd.DataFrame(csv_data)
 
@@ -428,19 +452,17 @@ def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
         )
 
     if rocprof_cmd.endswith("v3"):
-        results_files = glob.glob(workload_dir + "/out/pmc_1/*.json")
-        results_files.extend(glob.glob(workload_dir + "/out/*.json"))
+        results_files_json = glob.glob(workload_dir + "/out/pmc_1/*.json")
 
-        for json_file in results_files:
+        for json_file in results_files_json:
             csv_file = pathlib.Path(json_file).with_suffix('.csv')
             convert_to_csv(json_file, csv_file)
 
-        results_files = glob.glob(workload_dir + "/out/pmc_1/*.csv")
-        results_files.extend(glob.glob(workload_dir + "/out/*.csv"))
+        results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*.csv")
 
         # Combine results into single CSV file
         combined_results = pd.concat(
-            [pd.read_csv(f) for f in results_files], ignore_index=True
+            [pd.read_csv(f) for f in results_files_csv], ignore_index=True
         )
 
         # Overwrite column to ensure unique IDs.
