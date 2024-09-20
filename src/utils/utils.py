@@ -254,7 +254,7 @@ def get_agent_dict(data):
     return agent_map
 
 # Create a dictionary that maps counter ID to counter objects
-def get_counter_dict(data):
+def v3_json_get_counters(data):
     counters = data['rocprofiler-sdk-tool'][0]['counters']
 
     counter_map = {}
@@ -267,7 +267,7 @@ def get_counter_dict(data):
     
     return counter_map
 
-def get_dispatch_records(data):
+def v3_json_get_dispatches(data):
     records = data['rocprofiler-sdk-tool'][0]['buffer_records']
 
     records_map = {}
@@ -279,20 +279,21 @@ def get_dispatch_records(data):
 
     return records_map
 
-def convert_to_csv(json_file_path, csv_file_path):
+def v3_json_to_csv(json_file_path, csv_file_path):
 
     f = open(json_file_path, 'rt')
     data = json.load(f)
 
-    dispatch_records = get_dispatch_records(data)
+    dispatch_records = v3_json_get_dispatches(data)
     dispatches = data['rocprofiler-sdk-tool'][0]['callback_records']['counter_collection']
     kernel_symbols = data['rocprofiler-sdk-tool'][0]['kernel_symbols']
     agents = get_agent_dict(data)
     pid = data['rocprofiler-sdk-tool'][0]['metadata']['pid']
 
-    counter_info = get_counter_dict(data)
+    counter_info = v3_json_get_counters(data)
 
-    cols = dict.fromkeys([
+    # CSV headers. If there are no dispatches we still end up with a valid CSV file.
+    csv_data = dict.fromkeys([
         'Dispatch_ID',
         'GPU_ID',
         'Queue_ID',
@@ -312,11 +313,8 @@ def convert_to_csv(json_file_path, csv_file_path):
         'Correlation_ID',
     ])
 
-    csv_data = {}
-    
-    # Add dispatch into to CSV info
-    for col in cols.keys():
-        csv_data[col] = []
+    for key in csv_data:
+        csv_data[key] = []
 
     for d in dispatches:
 
@@ -324,68 +322,68 @@ def convert_to_csv(json_file_path, csv_file_path):
 
         agent_id = dispatch_info['agent_id']['handle']
 
-        cols = OrderedDict()
+        row = {}
 
-        cols['Dispatch_ID'] = dispatch_info['dispatch_id']
-        cols['GPU_ID'] = agents[agent_id]['node_id']
-        cols['Queue_ID'] = dispatch_info['queue_id']['handle']
-        cols['PID'] = pid
-        cols['TID'] = d['thread_id']
+        row['Dispatch_ID'] = dispatch_info['dispatch_id']
+        row['GPU_ID'] = agents[agent_id]['node_id']
+        row['Queue_ID'] = dispatch_info['queue_id']['handle']
+        row['PID'] = pid
+        row['TID'] = d['thread_id']
         
         grid_size = dispatch_info['grid_size']
-        cols['Grid_Size'] = grid_size['x'] * grid_size['y'] * grid_size['z']
+        row['Grid_Size'] = grid_size['x'] * grid_size['y'] * grid_size['z']
         
         wg = dispatch_info['workgroup_size']
-        cols['Workgroup_Size'] = wg['x'] * wg['y'] * wg['z']
+        row['Workgroup_Size'] = wg['x'] * wg['y'] * wg['z']
         
-        cols['LDS_Per_Workgroup'] = d['lds_block_size_v']
+        row['LDS_Per_Workgroup'] = d['lds_block_size_v']
 
         # TODO: Scratch per Work Item
-        cols['Scratch_Per_Workitem'] = 0
-        cols['Arch_VGPR'] = d['arch_vgpr_count']
+        row['Scratch_Per_Workitem'] = 0
+        row['Arch_VGPR'] = d['arch_vgpr_count']
 
         # TODO: Accum VGPR
-        cols['Accum_VGPR'] = 0
+        row['Accum_VGPR'] = 0
 
-        cols['SGPR'] = d['sgpr_count']
-        cols['Wave_Size'] = agents[agent_id]['wave_front_size']
+        row['SGPR'] = d['sgpr_count']
+        row['Wave_Size'] = agents[agent_id]['wave_front_size']
         
         kernel_id = dispatch_info['kernel_id']
-        cols['Kernel_Name'] = kernel_symbols[kernel_id]['formatted_kernel_name']
+        row['Kernel_Name'] = kernel_symbols[kernel_id]['formatted_kernel_name']
 
         id = d['dispatch_data']['correlation_id']['internal']
         rec = dispatch_records[id]
 
-        cols['Start_Timestamp'] = rec['start_timestamp']
-        cols['End_Timestamp'] = rec['end_timestamp']
-        cols['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
+        row['Start_Timestamp'] = rec['start_timestamp']
+        row['End_Timestamp'] = rec['end_timestamp']
+        row['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
 
         # Get counters
-        counters = {}
+        ctrs = {}
  
         records = d['records']
         for r in records:
-            id = r['counter_id']['handle']
+            ctr_id = r['counter_id']['handle']
             value = r['value']
 
-            name = counter_info[(agent_id, id)]['name']
+            name = counter_info[(agent_id, ctr_id)]['name']
 
             # Some counters appear multiple times and need to be summed
-            if name in counters:
-                counters[name] += value
+            if name in ctrs:
+                ctrs[name] += value
             else: 
-                counters[name] = value
+                ctrs[name] = value
 
-        # Append counters to this dispatch
-        for key in counters.keys():
-            cols[key] = counters[key]
+        # Append counter values
+        for ctr, value in ctrs.items():
+            row[ctr] = value
         
-        # Add dispatch into to CSV info
-        for col in cols.keys():
-            if col not in csv_data:
-                csv_data[col] = []
+        # Add row to CSV data
+        for col_name, value in row.items():
+            if col_name not in csv_data:
+                csv_data[col_name] = []
 
-            csv_data[col].append(cols[col])
+            csv_data[col_name].append(value)
 
     df = pd.DataFrame(csv_data)
 
@@ -456,7 +454,7 @@ def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
 
         for json_file in results_files_json:
             csv_file = pathlib.Path(json_file).with_suffix('.csv')
-            convert_to_csv(json_file, csv_file)
+            v3_json_to_csv(json_file, csv_file)
 
         results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*.csv")
 
