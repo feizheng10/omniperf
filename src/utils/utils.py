@@ -450,13 +450,13 @@ def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
         )
 
     if rocprof_cmd.endswith("v3"):
-        results_files_json = glob.glob(workload_dir + "/out/pmc_1/*.json")
+        results_files_json = glob.glob(workload_dir + "/out/pmc_1/*/*.json")
 
         for json_file in results_files_json:
             csv_file = pathlib.Path(json_file).with_suffix('.csv')
             v3_json_to_csv(json_file, csv_file)
 
-        results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*.csv")
+        results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*/*.csv")
 
         # Combine results into single CSV file
         combined_results = pd.concat(
