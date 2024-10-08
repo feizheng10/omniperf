@@ -373,8 +373,19 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
     # Each accumulate counter is in a different file
     for ctrs in accumulate_counters:
 
-        # Get name of the counter and use it as file name
         ctr_name = ctrs[ctrs.index("SQ_ACCUM_PREV_HIRES") - 1]
+
+        if using_v3():
+            # v3 does not support SQ_ACCUM_PREV_HIRES. Instead we defined our own
+            # counters in counter_defs.yaml that use the accumulate() function. These
+            # use the name of the accumulate counter with _ACCUM appended to them.
+            ctrs.remove("SQ_ACCUM_PREV_HIRES")
+
+            accum_name = ctr_name + "_ACCUM"
+
+            ctrs.append(accum_name)
+
+        # Use the name of the accumulate counter as the file name
         output_files.append(CounterFile(ctr_name + ".txt", perfmon_config))
         for ctr in ctrs:
             output_files[-1].add(ctr)

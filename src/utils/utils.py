@@ -368,6 +368,11 @@ def v3_json_to_csv(json_file_path, csv_file_path):
 
             name = counter_info[(agent_id, ctr_id)]['name']
 
+            if name.endswith('_ACCUM'):
+                # It's an accumulate counter. Omniperf expects the accumulated value
+                # to be in SQ_ACCUM_PREV_HIRES.
+                name = 'SQ_ACCUM_PREV_HIRES'
+            
             # Some counters appear multiple times and need to be summed
             if name in ctrs:
                 ctrs[name] += value
