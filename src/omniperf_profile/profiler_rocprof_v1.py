@@ -23,9 +23,10 @@
 ##############################################################################el
 
 import os
+import re
 
 from omniperf_profile.profiler_base import OmniProfiler_Base
-from utils.utils import demarcate, replace_timestamps, console_log
+from utils.utils import demarcate, replace_timestamps, console_log, console_debug, console_error
 
 
 class rocprof_v1_profiler(OmniProfiler_Base):
@@ -39,7 +40,23 @@ class rocprof_v1_profiler(OmniProfiler_Base):
 
     def get_profiler_options(self, fname):
         fbase = os.path.splitext(os.path.basename(fname))[0]
+
         app_cmd = self.get_args().remaining
+        if self.get_args().launcher:
+            print("------------------", self.get_args().launcher)
+            print("------------------", app_cmd)
+            # regex_pattern = rf'^(.*?)\s(?={re.escape(self.get_args().launcher)})'
+            regex_pattern = rf'^(.*?)\s({re.escape(self.get_args().launcher)}.*)'
+            match = re.match(regex_pattern, app_cmd)
+            if match:
+                before = match.group(1)
+                after = match.group(2)
+                console_debug(
+                "profiling", "The orignal app cmd %s " % after)
+                app_cmd = after
+            else:
+                console_error("profiling", "Can not match the launcher")
+
         args = [
             # v1 requires request for timestamps
             "--timestamp",

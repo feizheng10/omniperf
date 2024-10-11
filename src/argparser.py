@@ -212,6 +212,16 @@ Examples:
         help="\t\t\tProfile without collecting roofline data.",
     )
     profile_group.add_argument(
+        "-l",
+        "--launcher",
+        type=str,
+        dest="launcher",
+        metavar="",
+        required=False,
+        default=False,
+        help="\t\t\tlauncher name with mpi run.",
+    )
+    profile_group.add_argument(
         "remaining",
         metavar="-- [ ...]",
         default=None,
