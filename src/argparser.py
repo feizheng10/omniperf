@@ -218,6 +218,15 @@ Examples:
         nargs=argparse.REMAINDER,
         help="\t\t\tProvide command for profiling after double dash.",
     )
+    profile_group.add_argument(
+        "--multiplexing",
+        type=int,
+        metavar="",
+        nargs="+",
+        dest="multiplexing",
+        required=False,
+        help="\t\t\tJob ID and GPU number per node.",
+    )
 
     ## Roofline Command Line Options
     roofline_group.add_argument(
