@@ -27,6 +27,8 @@ import logging
 import sys
 import os
 import io
+import json
+import pathlib
 import re
 import selectors
 import subprocess
@@ -35,6 +37,7 @@ import pandas as pd
 import glob
 from pathlib import Path as path
 import config
+from collections import OrderedDict
 
 rocprof_cmd = ""
 
@@ -242,6 +245,159 @@ def capture_subprocess_output(subprocess_args, new_env=None, profileMode=False):
 
     return (success, output)
 
+# Create a dictionary that maps agent ID to agent objects
+def get_agent_dict(data):
+    agents = data['rocprofiler-sdk-tool'][0]['agents']
+
+    agent_map = {}
+
+    for agent in agents:
+        agent_id = agent['id']['handle']
+        agent_map[agent_id] = agent
+    
+    return agent_map
+
+# Create a dictionary that maps counter ID to counter objects
+def v3_json_get_counters(data):
+    counters = data['rocprofiler-sdk-tool'][0]['counters']
+
+    counter_map = {}
+
+    for counter in counters:
+        counter_id = counter['id']['handle']
+        agent_id = counter['agent_id']['handle']
+
+        counter_map[(agent_id, counter_id)] = counter
+    
+    return counter_map
+
+def v3_json_get_dispatches(data):
+    records = data['rocprofiler-sdk-tool'][0]['buffer_records']
+
+    records_map = {}
+
+    for rec in records['kernel_dispatch']:
+        id = rec['correlation_id']['internal']
+
+        records_map[id] = rec
+
+    return records_map
+
+def v3_json_to_csv(json_file_path, csv_file_path):
+
+    f = open(json_file_path, 'rt')
+    data = json.load(f)
+
+    dispatch_records = v3_json_get_dispatches(data)
+    dispatches = data['rocprofiler-sdk-tool'][0]['callback_records']['counter_collection']
+    kernel_symbols = data['rocprofiler-sdk-tool'][0]['kernel_symbols']
+    agents = get_agent_dict(data)
+    pid = data['rocprofiler-sdk-tool'][0]['metadata']['pid']
+
+    counter_info = v3_json_get_counters(data)
+
+    # CSV headers. If there are no dispatches we still end up with a valid CSV file.
+    csv_data = dict.fromkeys([
+        'Dispatch_ID',
+        'GPU_ID',
+        'Queue_ID',
+        'PID',
+        'TID',
+        'Grid_Size',
+        'Workgroup_Size',
+        'LDS_Per_Workgroup',
+        'Scratch_Per_Workitem',
+        'Arch_VGPR',
+        'Accum_VGPR',
+        'SGPR',
+        'Wave_Size',
+        'Kernel_Name',
+        'Start_Timestamp',
+        'End_Timestamp',
+        'Correlation_ID',
+    ])
+
+    for key in csv_data:
+        csv_data[key] = []
+
+    for d in dispatches:
+
+        dispatch_info = d['dispatch_data']['dispatch_info']
+
+        agent_id = dispatch_info['agent_id']['handle']
+
+        row = {}
+
+        row['Dispatch_ID'] = dispatch_info['dispatch_id']
+        row['GPU_ID'] = agents[agent_id]['node_id']
+        row['Queue_ID'] = dispatch_info['queue_id']['handle']
+        row['PID'] = pid
+        row['TID'] = d['thread_id']
+        
+        grid_size = dispatch_info['grid_size']
+        row['Grid_Size'] = grid_size['x'] * grid_size['y'] * grid_size['z']
+        
+        wg = dispatch_info['workgroup_size']
+        row['Workgroup_Size'] = wg['x'] * wg['y'] * wg['z']
+        
+        row['LDS_Per_Workgroup'] = d['lds_block_size_v']
+
+        # TODO: Scratch per Work Item
+        row['Scratch_Per_Workitem'] = 0
+        row['Arch_VGPR'] = d['arch_vgpr_count']
+
+        # TODO: Accum VGPR
+        row['Accum_VGPR'] = 0
+
+        row['SGPR'] = d['sgpr_count']
+        row['Wave_Size'] = agents[agent_id]['wave_front_size']
+        
+        kernel_id = dispatch_info['kernel_id']
+        row['Kernel_Name'] = kernel_symbols[kernel_id]['formatted_kernel_name']
+
+        id = d['dispatch_data']['correlation_id']['internal']
+        rec = dispatch_records[id]
+
+        row['Start_Timestamp'] = rec['start_timestamp']
+        row['End_Timestamp'] = rec['end_timestamp']
+        row['Correlation_ID'] = d['dispatch_data']['correlation_id']['external']
+
+        # Get counters
+        ctrs = {}
+ 
+        records = d['records']
+        for r in records:
+            ctr_id = r['counter_id']['handle']
+            value = r['value']
+
+            name = counter_info[(agent_id, ctr_id)]['name']
+
+            if name.endswith('_ACCUM'):
+                # It's an accumulate counter. Omniperf expects the accumulated value
+                # to be in SQ_ACCUM_PREV_HIRES.
+                name = 'SQ_ACCUM_PREV_HIRES'
+            
+            # Some counters appear multiple times and need to be summed
+            if name in ctrs:
+                ctrs[name] += value
+            else: 
+                ctrs[name] = value
+
+        # Append counter values
+        for ctr, value in ctrs.items():
+            row[ctr] = value
+        
+        # Add row to CSV data
+        for col_name, value in row.items():
+            if col_name not in csv_data:
+                csv_data[col_name] = []
+
+            csv_data[col_name].append(value)
+
+    df = pd.DataFrame(csv_data)
+
+    df.to_csv(csv_file_path, index=False)
+
 
 def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
 
@@ -293,6 +449,27 @@ def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
         # Combine results into single CSV file
         combined_results = pd.concat(
             [pd.read_csv(f) for f in results_files], ignore_index=True
+        )
+
+        # Overwrite column to ensure unique IDs.
+        combined_results["Dispatch_ID"] = range(0, len(combined_results))
+
+        combined_results.to_csv(
+            workload_dir + "/out/pmc_1/results_" + fbase + ".csv", index=False
+        )
+
+    if rocprof_cmd.endswith("v3"):
+        results_files_json = glob.glob(workload_dir + "/out/pmc_1/*/*.json")
+
+        for json_file in results_files_json:
+            csv_file = pathlib.Path(json_file).with_suffix('.csv')
+            v3_json_to_csv(json_file, csv_file)
+
+        results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*/*.csv")
+
+        # Combine results into single CSV file
+        combined_results = pd.concat(
+            [pd.read_csv(f) for f in results_files_csv], ignore_index=True
         )
 
         # Overwrite column to ensure unique IDs.

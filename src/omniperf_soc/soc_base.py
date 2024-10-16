@@ -298,6 +298,9 @@ class CounterFile:
 
         return self.blocks[block].add(counter)
 
+# TODO: This is a HACK
+def using_v3():
+    return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"] == "rocprofv3"
 
 @demarcate
 def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
@@ -334,14 +337,21 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                 # Normal counters
                 for ctr in counters:
 
+                    # v3 doesn't seem to support this counter
+                    if using_v3():
+                        if ctr.startswith("TCC_BUBBLE"):
+                            continue
+
                     # Channel counter e.g. TCC_ATOMIC[0]
                     if "[" in ctr:
 
-                        # Remove channel number, append "_expand" so we know
-                        # add the channel numbers back later
+                        # Remove channel number, append "_sum" so rocprof will
+                        # sum the counters for us instead of specifying every
+                        # channel.
                         channel = int(ctr.split("[")[1].split("]")[0])
                         if channel == 0:
-                            counter_name = ctr.split("[")[0] + "_expand"
+                            counter_name = ctr.split("[")[0] + "_sum"
+
                             try:
                                 normal_counters[counter_name] += 1
                             except:
@@ -363,8 +373,19 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
     # Each accumulate counter is in a different file
     for ctrs in accumulate_counters:
 
-        # Get name of the counter and use it as file name
         ctr_name = ctrs[ctrs.index("SQ_ACCUM_PREV_HIRES") - 1]
+
+        if using_v3():
+            # v3 does not support SQ_ACCUM_PREV_HIRES. Instead we defined our own
+            # counters in counter_defs.yaml that use the accumulate() function. These
+            # use the name of the accumulate counter with _ACCUM appended to them.
+            ctrs.remove("SQ_ACCUM_PREV_HIRES")
+
+            accum_name = ctr_name + "_ACCUM"
+
+            ctrs.append(accum_name)
+
+        # Use the name of the accumulate counter as the file name
         output_files.append(CounterFile(ctr_name + ".txt", perfmon_config))
         for ctr in ctrs:
             output_files[-1].add(ctr)
@@ -393,26 +414,9 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
 
         pmc = []
         for block_name in f.blocks.keys():
-            if block_name == "TCC":
+            for ctr in f.blocks[block_name].elements:
+                pmc.append(ctr)
 
-                # Expand and interleve the TCC channel counters
-                # e.g.  TCC_HIT[0] TCC_ATOMIC[0] ... TCC_HIT[1] TCC_ATOMIC[1] ...
-                channel_counters = []
-                for ctr in f.blocks[block_name].elements:
-                    if "_expand" in ctr:
-                        channel_counters.append(ctr.split("_expand")[0])
-
-                for i in range(0, perfmon_config["TCC_channels"]):
-                    for c in channel_counters:
-                        pmc.append("{}[{}]".format(c, i))
-
-                # Handle the rest of the TCC counters
-                for ctr in f.blocks[block_name].elements:
-                    if "_expand" not in ctr:
-                        pmc.append(ctr)
-            else:
-                for ctr in f.blocks[block_name].elements:
-                    pmc.append(ctr)
 
         stext = "pmc: " + " ".join(pmc)
 
@@ -425,9 +429,11 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
         fd.close()
 
     # Add a timestamp file
-    fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
-    fd.write("pmc:\n\n")
-    fd.write("gpu:\n")
-    fd.write("range:\n")
-    fd.write("kernel:\n")
-    fd.close()
+    # TODO: Does v3 need this?
+    if not using_v3():
+        fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
+        fd.write("pmc:\n\n")
+        fd.write("gpu:\n")
+        fd.write("range:\n")
+        fd.write("kernel:\n")
+        fd.close()

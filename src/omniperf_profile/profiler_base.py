@@ -167,6 +167,8 @@ class OmniProfiler_Base:
                         "TID",
                         "SIG",
                         "OBJ",
+                        "Correlation_ID_",
+                        "Wave_Size_",
                         # rocscope specific merged counters, keep original
                         "dispatch_",
                         # extras
@@ -359,7 +361,7 @@ class OmniProfiler_Base:
             # Fetch any SoC/profiler specific profiling options
             options = self._soc.get_profiler_options()
             options += self.get_profiler_options(fname)
-            if self.__profiler == "rocprofv1" or self.__profiler == "rocprofv2":
+            if self.__profiler == "rocprofv1" or self.__profiler == "rocprofv2" or self.__profiler == "rocprofv3":
                 run_prof(
                     fname=fname,
                     profiler_options=options,
