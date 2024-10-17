@@ -434,16 +434,16 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
         new_bucket_count = node_count * gpu_count
         groups_per_bucket = math.ceil(
             old_group_num / new_bucket_count
-        )  # It equals to file # per node
-        groups_per_node = groups_per_bucket * gpu_count
+        )  # It equals to file num per node
+        max_groups_per_node = groups_per_bucket * gpu_count
 
-        group_start = node_idx * groups_per_node
-        group_end = min((node_idx + 1) * groups_per_node, old_group_num)
+        group_start = node_idx * max_groups_per_node
+        group_end = min((node_idx + 1) * max_groups_per_node, old_group_num)
 
         console_debug(
             "profiling",
             "multiplexing node_idx %s, node_count %s, gpu_count: %s, old_group_num %s, "
-            "new_bucket_count %s, groups_per_bucket %s, groups_per_node %s, "
+            "new_bucket_count %s, groups_per_bucket %s, max_groups_per_node %s, "
             "group_start %s, group_end %s"
             % (
                 node_idx,
@@ -452,7 +452,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
                 old_group_num,
                 new_bucket_count,
                 groups_per_bucket,
-                groups_per_node,
+                max_groups_per_node,
                 group_start,
                 group_end,
             ),
@@ -464,7 +464,10 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
                 "node_" + str(node_idx) + "_perf_" + str(f_idx) + ".txt",
             )
             pmc = []
-            for g_idx in range(group_start, group_end):  # FIXME
+            for g_idx in range(
+                group_start + f_idx * gpu_count,
+                min(group_end, group_start + (f_idx + 1) * gpu_count),
+            ):
                 gpu_idx = g_idx % gpu_count
                 for block_name in output_files[g_idx].blocks.keys():
                     for ctr in output_files[g_idx].blocks[block_name].elements:

@@ -309,9 +309,6 @@ class OmniProfiler_Base:
         if self.__args.loglevel >= logging.ERROR:
             disable_tqdm = False
 
-        if self.get_args().multiplexing:
-            print("------------------", self.get_args().multiplexing)
-
         # Run profiling on each input file
         input_files = glob.glob(self.get_args().path + "/perfmon/*.txt")
         input_files.sort()
