@@ -225,7 +225,7 @@ Examples:
         nargs="+",
         dest="multiplexing",
         required=False,
-        help="\t\t\tJob ID and GPU number per node.",
+        help="\t\t\tProvide Node ID and GPU number per node.",
     )
 
     ## Roofline Command Line Options

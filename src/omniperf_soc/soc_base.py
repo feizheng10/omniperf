@@ -239,7 +239,12 @@ class OmniSoC_Base:
             pmc_files_list = ref_pmc_files_list
 
         # Coalesce and writeback workload specific perfmon
-        perfmon_coalesce(pmc_files_list, self.__perfmon_config, self.__workload_dir)
+        perfmon_coalesce(
+            pmc_files_list,
+            self.__perfmon_config,
+            self.__workload_dir,
+            self.get_args().multiplexing,
+        )
 
     # ----------------------------------------------------
     # Required methods to be implemented by child classes
@@ -298,12 +303,14 @@ class CounterFile:
 
         return self.blocks[block].add(counter)
 
+
 # TODO: This is a HACK
 def using_v3():
     return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"] == "rocprofv3"
 
+
 @demarcate
-def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
+def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing):
     """Sort and bucket all related performance counters to minimize required application passes"""
     workload_perfmon_dir = workload_dir + "/perfmon"
 
@@ -408,32 +415,79 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
             file_count += 1
             output_files[-1].add(ctr)
 
-    # Output to files
-    for f in output_files:
-        file_name = os.path.join(workload_perfmon_dir, f.file_name)
+    console_debug("profiling", "perfmon_coalesce file_count %s" % file_count)
 
-        pmc = []
-        for block_name in f.blocks.keys():
-            for ctr in f.blocks[block_name].elements:
-                pmc.append(ctr)
+    # TODO: rewrite the above logic for multiplexing later
+    if multiplexing:
 
+        # TODO: more error checking
+        if len(multiplexing) != 3:
+            console_error(
+                "profiling", "multiplexing need provide node_idx node_count and gpu_count"
+            )
 
-        stext = "pmc: " + " ".join(pmc)
+        node_idx = int(multiplexing[0])
+        node_count = int(multiplexing[1])
+        gpu_count = int(multiplexing[2])
 
-        # Write counters to file
-        fd = open(file_name, "w")
-        fd.write(stext + "\n\n")
-        fd.write("gpu:\n")
-        fd.write("range:\n")
-        fd.write("kernel:\n")
-        fd.close()
+        old_group_num = file_count
+        new_bucket_count = node_count * gpu_count
+        groups_per_bucket = math.ceil(old_group_num / new_bucket_count)
+        new_file_num_per_bucket = math.ceil(groups_per_bucket / gpu_count)
 
-    # Add a timestamp file
-    # TODO: Does v3 need this?
-    if not using_v3():
-        fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
-        fd.write("pmc:\n\n")
-        fd.write("gpu:\n")
-        fd.write("range:\n")
-        fd.write("kernel:\n")
-        fd.close()
+        console_debug(
+            "profiling",
+            "multiplexing node_idx %s, node_count %s, gpu_count: %s, file_count %s"
+            % (node_idx, node_count, gpu_count, file_count),
+        )
+
+        group_start = node_idx * groups_per_bucket
+        group_end = min((node_idx + 1) * groups_per_bucket, old_group_num)
+        for f_idx in range(new_file_num_per_bucket):
+            file_name = os.path.join(
+                workload_perfmon_dir,
+                "node_" + str(node_idx) + "_perf_" + str(f_idx) + ".txt",
+            )
+            pmc = []
+            for g_idx in range(group_start, group_end):
+                gpu_idx = g_idx % gpu_count
+                for block_name in output_files[g_idx].blocks.keys():
+                    for ctr in output_files[g_idx].blocks[block_name].elements:
+                        pmc.append(ctr + ":device=" + str(gpu_idx))
+
+            stext = "pmc: " + " ".join(pmc)
+
+            # Write counters to file
+            fd = open(file_name, "w")
+            fd.write(stext + "\n\n")
+            fd.close()
+
+    else:
+        # Output to files
+        for f in output_files:
+            file_name = os.path.join(workload_perfmon_dir, f.file_name)
+
+            pmc = []
+            for block_name in f.blocks.keys():
+                for ctr in f.blocks[block_name].elements:
+                    pmc.append(ctr)
+
+            stext = "pmc: " + " ".join(pmc)
+
+            # Write counters to file
+            fd = open(file_name, "w")
+            fd.write(stext + "\n\n")
+            fd.write("gpu:\n")
+            fd.write("range:\n")
+            fd.write("kernel:\n")
+            fd.close()
+
+        # Add a timestamp file
+        # TODO: Does v3 need this?
+        if not using_v3():
+            fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
+            fd.write("pmc:\n\n")
+            fd.write("gpu:\n")
+            fd.write("range:\n")
+            fd.write("kernel:\n")
+            fd.close()
