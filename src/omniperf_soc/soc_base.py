@@ -432,24 +432,39 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
 
         old_group_num = file_count
         new_bucket_count = node_count * gpu_count
-        groups_per_bucket = math.ceil(old_group_num / new_bucket_count)
-        new_file_num_per_bucket = math.ceil(groups_per_bucket / gpu_count)
+        groups_per_bucket = math.ceil(
+            old_group_num / new_bucket_count
+        )  # It equals to file # per node
+        groups_per_node = groups_per_bucket * gpu_count
+
+        group_start = node_idx * groups_per_node
+        group_end = min((node_idx + 1) * groups_per_node, old_group_num)
 
         console_debug(
             "profiling",
-            "multiplexing node_idx %s, node_count %s, gpu_count: %s, file_count %s"
-            % (node_idx, node_count, gpu_count, file_count),
+            "multiplexing node_idx %s, node_count %s, gpu_count: %s, old_group_num %s, "
+            "new_bucket_count %s, groups_per_bucket %s, groups_per_node %s, "
+            "group_start %s, group_end %s"
+            % (
+                node_idx,
+                node_count,
+                gpu_count,
+                old_group_num,
+                new_bucket_count,
+                groups_per_bucket,
+                groups_per_node,
+                group_start,
+                group_end,
+            ),
         )
 
-        group_start = node_idx * groups_per_bucket
-        group_end = min((node_idx + 1) * groups_per_bucket, old_group_num)
-        for f_idx in range(new_file_num_per_bucket):
+        for f_idx in range(groups_per_bucket):
             file_name = os.path.join(
                 workload_perfmon_dir,
                 "node_" + str(node_idx) + "_perf_" + str(f_idx) + ".txt",
             )
             pmc = []
-            for g_idx in range(group_start, group_end):
+            for g_idx in range(group_start, group_end):  # FIXME
                 gpu_idx = g_idx % gpu_count
                 for block_name in output_files[g_idx].blocks.keys():
                     for ctr in output_files[g_idx].blocks[block_name].elements:
