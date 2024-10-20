@@ -377,6 +377,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
 
     output_files = []
 
+    accu_file_count = 0
     # Each accumulate counter is in a different file
     for ctrs in accumulate_counters:
 
@@ -396,6 +397,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
         output_files.append(CounterFile(ctr_name + ".txt", perfmon_config))
         for ctr in ctrs:
             output_files[-1].add(ctr)
+        accu_file_count += 1
 
     file_count = 0
     for ctr in normal_counters.keys():
@@ -430,7 +432,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir, multiplexing)
         node_count = int(multiplexing[1])
         gpu_count = int(multiplexing[2])
 
-        old_group_num = file_count
+        old_group_num = file_count + accu_file_count
         new_bucket_count = node_count * gpu_count
         groups_per_bucket = math.ceil(
             old_group_num / new_bucket_count
