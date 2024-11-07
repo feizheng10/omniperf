@@ -23,9 +23,17 @@
 ##############################################################################el
 
 import os
+import re
+import shlex
 
 from rocprof_compute_profile.profiler_base import RocProfCompute_Base
-from utils.utils import demarcate, replace_timestamps, console_log
+from utils.utils import (
+    demarcate,
+    console_log,
+    console_debug,
+    console_error,
+    replace_timestamps,
+)
 
 
 class rocprof_v1_profiler(RocProfCompute_Base):
@@ -39,7 +47,28 @@ class rocprof_v1_profiler(RocProfCompute_Base):
 
     def get_profiler_options(self, fname):
         fbase = os.path.splitext(os.path.basename(fname))[0]
-        app_cmd = self.get_args().remaining
+        app_cmd = shlex.split(self.get_args().remaining)
+
+        if self.get_args().launcher:
+            print("------------------", self.get_args().launcher)
+            print("------------------", app_cmd)
+            # regex_pattern = rf'^(.*?)\s(?={re.escape(self.get_args().launcher)})'
+            regex_pattern = rf"^(.*?)\s({re.escape(self.get_args().launcher)}.*)"
+            match = re.match(regex_pattern, app_cmd)
+            if match:
+                before = match.group(1)
+                after = match.group(2)
+                app_cmd = after
+                self.parallel_launcher = before.split()
+                # super().set_parallel_launcher(before.split())
+                console_debug(
+                    "profiling",
+                    "The orignal app cmd %s, parallel_launcher %s"
+                    % (after, self.parallel_launcher),
+                )
+            else:
+                console_error("profiling", "Can not match the launcher")
+
         args = [
             # v1 requires request for timestamps
             "--timestamp",

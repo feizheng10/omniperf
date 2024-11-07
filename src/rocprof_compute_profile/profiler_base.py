@@ -49,6 +49,7 @@ class RocProfCompute_Base:
     def __init__(self, args, profiler_mode, soc):
         self.__args = args
         self.__profiler = profiler_mode
+        self.parallel_launcher = []
         self._soc = soc  # OmniSoC obj
         self.__perfmon_dir = os.path.join(
             str(config.rocprof_compute_home), "rocprof_compute_soc", "profile_configs"
@@ -258,6 +259,10 @@ class RocProfCompute_Base:
         # verify correct formatting for application binary
         self.__args.remaining = self.__args.remaining[1:]
         if self.__args.remaining:
+
+            # debug only
+            # pass
+
             if not os.path.isfile(self.__args.remaining[0]):
                 console_error(
                     "Your command %s doesn't point to a executable. Please verify."
@@ -363,6 +368,7 @@ class RocProfCompute_Base:
                     workload_dir=self.get_args().path,
                     mspec=self._soc._mspec,
                     loglevel=self.get_args().loglevel,
+                    parallel_launcher=self.parallel_launcher,
                 )
 
             elif self.__profiler == "rocscope":

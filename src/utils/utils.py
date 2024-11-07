@@ -243,7 +243,7 @@ def capture_subprocess_output(subprocess_args, new_env=None, profileMode=False):
     return (success, output)
 
 
-def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
+def run_prof(fname, profiler_options, workload_dir, mspec, loglevel, parallel_launcher):
 
     fbase = os.path.splitext(os.path.basename(fname))[0]
 
@@ -271,13 +271,14 @@ def run_prof(fname, profiler_options, workload_dir, mspec, loglevel):
         new_env["ROCPROFILER_INDIVIDUAL_XCC_MODE"] = "1"
 
     # profile the app
+    # print("~~~~~~~~~~~~~~~~~~~", parallel_launcher)
     if new_env:
         success, output = capture_subprocess_output(
-            [rocprof_cmd] + options, new_env=new_env, profileMode=True
+            parallel_launcher + [rocprof_cmd] + options, new_env=new_env, profileMode=True
         )
     else:
         success, output = capture_subprocess_output(
-            [rocprof_cmd] + options, profileMode=True
+            parallel_launcher + [rocprof_cmd] + options, profileMode=True
         )
 
     if not success:
