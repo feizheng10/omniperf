@@ -54,6 +54,9 @@ class rocprof_v1_profiler(OmniProfiler_Base):
                 console_debug(
                 "profiling", "The orignal app cmd %s " % after)
                 app_cmd = after
+                self.__parallel_launcher = before.split()
+                console_debug(
+                "profiling", "The parallel launcher %s " % self.__parallel_launcher)
             else:
                 console_error("profiling", "Can not match the launcher")
 
