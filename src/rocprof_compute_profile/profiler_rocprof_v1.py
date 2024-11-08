@@ -47,7 +47,7 @@ class rocprof_v1_profiler(RocProfCompute_Base):
 
     def get_profiler_options(self, fname):
         fbase = os.path.splitext(os.path.basename(fname))[0]
-        app_cmd = shlex.split(self.get_args().remaining)
+        app_cmd = self.get_args().remaining
 
         if self.get_args().launcher:
             print("------------------", self.get_args().launcher)

@@ -26,6 +26,7 @@ import argparse
 import logging
 import sys
 import os
+import re
 from pathlib import Path
 import shutil
 from utils.specs import MachineSpecs, generate_machine_specs
@@ -193,6 +194,15 @@ class RocProfCompute:
             console_error(
                 "rocprof-compute requires you pass a valid mode. Detected None."
             )
+
+        if self.__args.mode == "profile":
+            if self.__args.launcher:
+                hostname = generate_machine_specs(self.__args).hostname
+                self.__args.name = self.__args.name + "-" + hostname
+
+        # check MongoDB limitation at pre_processing() in profiler_base.py
+        self.__args.name = re.sub(r"[.-]", "_", self.__args.name)
+
         return
 
     @demarcate
