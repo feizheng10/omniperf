@@ -53,7 +53,7 @@ class rocprof_v1_profiler(RocProfCompute_Base):
             print("------------------", self.get_args().launcher)
             print("------------------", app_cmd)
             # regex_pattern = rf'^(.*?)\s(?={re.escape(self.get_args().launcher)})'
-            regex_pattern = rf"^(.?)(\s?)({re.escape(self.get_args().launcher)}.*)"
+            regex_pattern = rf"^(.*?)\s({re.escape(self.get_args().launcher)}.*)"
             match = re.match(regex_pattern, app_cmd)
             if match:
                 before = match.group(1)
