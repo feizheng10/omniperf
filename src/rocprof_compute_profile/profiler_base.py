@@ -261,13 +261,13 @@ class RocProfCompute_Base:
         if self.__args.remaining:
 
             # debug only
-            # pass
+            pass
 
-            if not os.path.isfile(self.__args.remaining[0]):
-                console_error(
-                    "Your command %s doesn't point to a executable. Please verify."
-                    % self.__args.remaining[0]
-                )
+            # if not os.path.isfile(self.__args.remaining[0]):
+            #     console_error(
+            #         "Your command %s doesn't point to a executable. Please verify."
+            #         % self.__args.remaining[0]
+            #     )
             self.__args.remaining = " ".join(self.__args.remaining)
         else:
             console_error(
