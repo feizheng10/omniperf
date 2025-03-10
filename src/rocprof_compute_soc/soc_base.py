@@ -306,7 +306,7 @@ class CounterFile:
 
 # FIXME: This is a HACK
 def using_v3():
-    return "ROCPROF" in os.environ.keys() and "rocprofv3" in os.environ["ROCPROF"]
+    return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"].endswith("rocprofv3")
 
 
 @demarcate
