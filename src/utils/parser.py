@@ -964,8 +964,8 @@ def find_key_recursively(data, search_key):
 def search_key_in_json(file_path, search_key):
 
     # FIXME:
-    #   Load the entire JSON into memory,
-    #   should not use for large file
+    #   Load the entire JSON into memory.
+    #   Should not use for large file.
     with open(file_path, "r") as file:
         data = json.load(file)
         found = find_key_recursively(data, search_key)
@@ -976,7 +976,7 @@ def search_key_in_json(file_path, search_key):
 
 def search_pc_sampling_record(records):
     """
-    Search PC sampling records, and group and sort it
+    Search PC sampling records, and group and sort them
     """
     grouped_data = defaultdict(
         lambda: defaultdict(lambda: {"count": 0, "inst_index": None})
@@ -1016,7 +1016,7 @@ def search_pc_sampling_record(records):
 @demarcate
 def load_pc_sampling_data_per_kernel(file_name, kernel_name):
     """
-    Load PC sampling raw data from json with given kernel name,
+    Load PC sampling raw data from json file with given kernel name,
     then return df.
     """
     kernel_info_list = search_key_in_json(file_name, "kernel_symbols")
@@ -1024,14 +1024,18 @@ def load_pc_sampling_data_per_kernel(file_name, kernel_name):
     kernel_info = {}
     if kernel_info_list:
         for item in kernel_info_list:
-            if item["truncated_kernel_name"] == kernel_name:
-                kernel_info["kernel_id"] = item["kernel_id"]
+            if (
+                item["formatted_kernel_name"] == kernel_name
+                or item["demangled_kernel_name"] == kernel_name
+                or item["truncated_kernel_name"] == kernel_name
+            ):
+                # kernel_info["kernel_id"] = item["kernel_id"]
                 kernel_info["code_object_id"] = item["code_object_id"]
                 kernel_info["entry_byte_offset"] = item["kernel_code_entry_byte_offset"]
                 break
 
     if not kernel_info:
-        console_warning("PC sampling: not find the kernel %s " % kernel_name)
+        console_warning("PC sampling: can not find the kernel %s " % kernel_name)
         return pd.DataFrame()
 
     filtered_sorted_list = sorted(
@@ -1090,14 +1094,6 @@ def load_pc_sampling_data_per_kernel(file_name, kernel_name):
             else None
         )
     )
-    # df["source_line"] = df["source_line"].apply(lambda x: ".../" + Path(x).name)
-
-    # print(tabulate(
-    #         df[["source_line", "instruction", "offset", "count"]],
-    #         headers="keys",
-    #         tablefmt="fancy_grid",
-    #         showindex=False,
-    #     ))
 
     return df[["source_line", "instruction", "offset", "count"]]
 
@@ -1153,6 +1149,8 @@ def load_pc_sampling_data(workload, dir, file_prefix):
             console_error("PC sampling: can not read %s " % json_file_path)
             return pd.DataFrame()
         else:
+            # NB:
+            #   We should find better way to remove the dependency on kernel_top_table
             kernel_top_df = workload.dfs[pmc_kernel_top_table_id]
             file = Path.joinpath(Path(dir), kernel_top_df.loc[0, "from_csv"])
             kernel_name = pd.read_csv(file).loc[
