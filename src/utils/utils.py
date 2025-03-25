@@ -727,6 +727,37 @@ def run_prof(
     df.to_csv(workload_dir + "/" + fbase + ".csv", index=False)
 
 
+def pc_sampling_prof(pc_sampling_interval, workload_dir, appcmd, loglevel):
+    """
+    Run rocprof with pc sampling. Current support v3 only.
+    """
+    # Todo:
+    #   - precheck with rocprofv3 –-list-avail
+    options = [
+        "--pc-sampling-beta-enable",
+        "--pc-sampling-method",
+        "host_trap",
+        "--pc-sampling-unit",
+        "time",
+        "--output-format",
+        "csv",
+        "json",
+        "--pc-sampling-interval",
+        str(pc_sampling_interval),
+        "-d",
+        workload_dir,
+        "-o",
+        "ps_sampling",
+        "--",
+        appcmd,
+    ]
+    success, output = capture_subprocess_output(
+        [rocprof_cmd] + options, new_env=os.environ.copy(), profileMode=True
+    )
+    if not success:
+        console_error("PC sampling failed.")
+
+
 def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
     """
     rocprofv3 specific output processing.

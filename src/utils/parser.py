@@ -1107,7 +1107,10 @@ def load_pc_sampling_data(workload, dir, file_prefix):
 
     # No kernel filter, return grouped and sorted csv directly
     if not workload.filter_kernel_ids:
-        csv_file_path = Path.joinpath(Path(dir), file_prefix + ".csv")
+        # NB: the default file name is subject to changes from rocprofv3
+        csv_file_path = Path.joinpath(
+            Path(dir), file_prefix + "_pc_sampling_host_trap.csv"
+        )
         if not csv_file_path.exists():
             console_error("PC sampling: can not read %s " % csv_file_path)
             return pd.DataFrame()
@@ -1144,7 +1147,8 @@ def load_pc_sampling_data(workload, dir, file_prefix):
 
     elif len(workload.filter_kernel_ids) == 1:
         # print("kernel id", workload.filter_kernel_ids[0])
-        json_file_path = Path.joinpath(Path(dir), file_prefix + ".json")
+        # NB: the default file name is subject to changes from rocprofv3
+        json_file_path = Path.joinpath(Path(dir), file_prefix + "_results.json")
         if not json_file_path.exists():
             console_error("PC sampling: can not read %s " % json_file_path)
             return pd.DataFrame()
