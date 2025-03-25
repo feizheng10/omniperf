@@ -429,8 +429,9 @@ class RocProfCompute_Base:
         if self.__pc_sampling == True and self.__profiler == "rocprofv3":
             start_run_prof = time.time()
             pc_sampling_prof(
+                interval=self.get_args().pc_sampling_interval,
                 workload_dir=self.get_args().path,
-                appcmd=self.__args.remaining,
+                appcmd=self.get_args().remaining,
                 loglevel=self.get_args().loglevel,
             )
             end_run_prof = time.time()

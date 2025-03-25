@@ -727,7 +727,7 @@ def run_prof(
     df.to_csv(workload_dir + "/" + fbase + ".csv", index=False)
 
 
-def pc_sampling_prof(pc_sampling_interval, workload_dir, appcmd, loglevel):
+def pc_sampling_prof(interval, workload_dir, appcmd, loglevel):
     """
     Run rocprof with pc sampling. Current support v3 only.
     """
@@ -743,11 +743,11 @@ def pc_sampling_prof(pc_sampling_interval, workload_dir, appcmd, loglevel):
         "csv",
         "json",
         "--pc-sampling-interval",
-        str(pc_sampling_interval),
+        str(interval),
         "-d",
         workload_dir,
         "-o",
-        "ps_sampling",
+        "ps_file",  # todo: sync up with the name from source in 2100_.yaml
         "--",
         appcmd,
     ]
