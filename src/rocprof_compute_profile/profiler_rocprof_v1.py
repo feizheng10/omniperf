@@ -25,8 +25,10 @@
 import os
 from pathlib import Path
 
+import config
 from rocprof_compute_profile.profiler_base import RocProfCompute_Base
-from utils.utils import console_log, demarcate, replace_timestamps, store_app_cmd
+from utils.logger import console_log, demarcate
+from utils.utils import replace_timestamps, store_app_cmd
 
 
 class rocprof_v1_profiler(RocProfCompute_Base):
@@ -43,9 +45,14 @@ class rocprof_v1_profiler(RocProfCompute_Base):
         app_cmd = self.get_args().remaining
 
         args = []
-        # can be removed in the future. It supports gfx908 + v1
+        # rocprof v1 does not support some counters on gfx 908 architecture
         if soc.get_arch() == "gfx908":
-            args += ["-m", soc.get_workload_perfmon_dir() + "/" + "metrics.xml"]
+            metrics_path = str(
+                Path(str(config.rocprof_compute_home)).joinpath(
+                    "rocprof_compute_soc", "profile_configs", "metrics.xml"
+                )
+            )
+            args += ["-m", metrics_path]
 
         args += [
             # v1 requires request for timestamps

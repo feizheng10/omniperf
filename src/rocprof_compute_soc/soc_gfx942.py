@@ -27,7 +27,8 @@ from pathlib import Path
 import config
 from rocprof_compute_soc.soc_base import OmniSoC_Base
 from roofline import Roofline
-from utils.utils import console_error, console_log, demarcate, mibench
+from utils.logger import console_error, console_log, demarcate
+from utils.utils import mibench
 
 
 class gfx942_soc(OmniSoC_Base):
@@ -45,17 +46,6 @@ class gfx942_soc(OmniSoC_Base):
                     )
                 )
             )
-        else:
-            # NB: We're using generalized Mi300 perfmon configs
-            self.set_perfmon_dir(
-                str(
-                    Path(str(config.rocprof_compute_home)).joinpath(
-                        "rocprof_compute_soc",
-                        "profile_configs",
-                        "gfx940",
-                    )
-                )
-            )
         self.set_compatible_profilers(["rocprofv1", "rocprofv2", "rocprofv3"])
         # Per IP block max number of simultaneous counters. GFX IP Blocks
         self.set_perfmon_config(
@@ -70,7 +60,6 @@ class gfx942_soc(OmniSoC_Base):
                 "SPI": 2,
                 "GRBM": 2,
                 "GDS": 4,
-                "TCC_channels": 16,
             }
         )
         self.roofline_obj = Roofline(args, self._mspec)

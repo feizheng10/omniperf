@@ -35,13 +35,15 @@ import pandas as pd
 from tqdm import tqdm
 
 import config
-from utils.utils import (
-    capture_subprocess_output,
+from utils.logger import (
     console_debug,
     console_error,
     console_log,
     console_warning,
     demarcate,
+)
+from utils.utils import (
+    capture_subprocess_output,
     gen_sysinfo,
     print_status,
     run_prof,
@@ -56,11 +58,6 @@ class RocProfCompute_Base:
         self.__profiler = profiler_mode
         self.__supported_archs = supported_archs
         self._soc = soc  # OmniSoC obj
-        self.__perfmon_dir = str(
-            Path(str(config.rocprof_compute_home)).joinpath(
-                "rocprof_compute_soc", "profile_configs"
-            )
-        )
         self.__filter_hardware_blocks = [
             name for name, type in args.filter_blocks.items() if type == "hardware_block"
         ]

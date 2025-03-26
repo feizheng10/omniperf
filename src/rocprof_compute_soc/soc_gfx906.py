@@ -26,22 +26,13 @@ from pathlib import Path
 
 import config
 from rocprof_compute_soc.soc_base import OmniSoC_Base
-from utils.utils import console_error, demarcate
+from utils.logger import console_error, demarcate
 
 
 class gfx906_soc(OmniSoC_Base):
     def __init__(self, args, mspec):
         super().__init__(args, mspec)
         self.set_arch("gfx906")
-        self.set_perfmon_dir(
-            str(
-                Path(str(config.rocprof_compute_home)).joinpath(
-                    "rocprof_compute_soc",
-                    "profile_configs",
-                    self.get_arch(),
-                )
-            )
-        )
         self.set_compatible_profilers(["rocprofv1", "rocscope"])
         # Per IP block max number of simultaneous counters. GFX IP Blocks
         self.set_perfmon_config(
@@ -56,7 +47,6 @@ class gfx906_soc(OmniSoC_Base):
                 "SPI": 2,
                 "GRBM": 2,
                 "GDS": 4,
-                "TCC_channels": 16,
             }
         )
 

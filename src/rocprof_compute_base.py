@@ -24,7 +24,6 @@
 
 import argparse
 import importlib
-import logging
 import os
 import shutil
 import socket
@@ -39,38 +38,24 @@ import config
 from argparser import omniarg_parser
 from utils import file_io, parser, schema
 from utils.logger import (
-    setup_console_handler,
-    setup_file_handler,
-    setup_logging_priority,
-)
-from utils.specs import MachineSpecs, generate_machine_specs
-from utils.utils import (
     console_debug,
     console_error,
     console_log,
     console_warning,
     demarcate,
+    setup_console_handler,
+    setup_file_handler,
+    setup_logging_priority,
+)
+from utils.mi_gpu_spec import get_gpu_series_dict, parse_mi_gpu_spec
+from utils.specs import MachineSpecs, generate_machine_specs
+from utils.utils import (
     detect_rocprof,
     get_submodules,
     get_version,
     get_version_display,
     set_locale_encoding,
 )
-
-SUPPORTED_ARCHS = {
-    "gfx906": {"mi50": ["MI50", "MI60"]},
-    "gfx908": {"mi100": ["MI100"]},
-    "gfx90a": {"mi200": ["MI210", "MI250", "MI250X"]},
-    "gfx940": {"mi300": ["MI300A_A0"]},
-    "gfx941": {"mi300": ["MI300X_A0"]},
-    "gfx942": {"mi300": ["MI300A_A1", "MI300X_A1"]},
-}
-
-MI300_CHIP_IDS = {
-    "29856": "MI300A_A1",
-    "29857": "MI300X_A1",
-    "29858": "MI308X",
-}
 
 
 class RocProfCompute:
@@ -87,7 +72,8 @@ class RocProfCompute:
             "ver_pretty": None,
         }
         self.__options = {}
-        self.__supported_archs = SUPPORTED_ARCHS
+        parse_mi_gpu_spec()
+        self.__supported_archs = get_gpu_series_dict()
         self.__mspec: MachineSpecs = None  # to be initalized in load_soc_specs()
         setup_console_handler()
         self.set_version()
@@ -171,10 +157,6 @@ class RocProfCompute:
 
         arch = self.__mspec.gpu_arch
 
-        # NB: This checker is a bit redundent. We already check this in specs module
-        if arch not in self.__supported_archs.keys():
-            console_error("%s is an unsupported SoC" % arch)
-
         soc_module = importlib.import_module("rocprof_compute_soc.soc_" + arch)
         soc_class = getattr(soc_module, arch + "_soc")
         self.__soc[arch] = soc_class(self.__args, self.__mspec)
@@ -200,7 +182,7 @@ class RocProfCompute:
                 sys.exit(0)
             parser.print_help(sys.stderr)
             console_error(
-                "rocprof-compute requires you pass a valid mode. Detected None."
+                "rocprof-compute requires you to pass a valid mode. Detected None."
             )
         elif self.__args.mode == "profile":
 

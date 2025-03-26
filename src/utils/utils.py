@@ -42,74 +42,23 @@ from pathlib import Path as path
 import pandas as pd
 
 import config
+from utils.logger import console_debug, console_error, console_log, console_warning
+from utils.mi_gpu_spec import get_mi300_num_xcds
 
 rocprof_cmd = ""
 rocprof_args = ""
 
 
-# TODO: This is a HACK
+def is_tcc_channel_counter(counter):
+    return counter.startswith("TCC") and counter.endswith("]")
+
+
+def using_v1():
+    return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"].endswith("rocprof")
+
+
 def using_v3():
-    return "ROCPROF" in os.environ.keys() and "rocprofv3" in os.environ["ROCPROF"]
-
-
-# TODO: This is a HACK
-def get_default_accumulate_counter_file_ymal():
-    """Return the path of the default derivative counters' definatin's yaml file that we current use to store accumulated counters' defination. It will possibly be removed later on"""
-    return str(
-        config.rocprof_compute_home.joinpath(
-            "rocprof_compute_soc",
-            "profile_configs",
-            "accum_counters.yaml",
-        )
-    )
-
-
-def demarcate(function):
-    def wrap_function(*args, **kwargs):
-        logging.trace("----- [entering function] -> %s()" % (function.__qualname__))
-        result = function(*args, **kwargs)
-        logging.trace("----- [exiting  function] -> %s()" % function.__qualname__)
-        return result
-
-    return wrap_function
-
-
-def console_error(*argv, exit=True):
-    if len(argv) > 1:
-        logging.error(f"[{argv[0]}] {argv[1]}")
-    else:
-        logging.error(f"{argv[0]}")
-    if exit:
-        sys.exit(1)
-
-
-def console_log(*argv, indent_level=0):
-    indent = ""
-    if indent_level >= 1:
-        indent = " " * 3 * indent_level + "|-> "  # spaces per indent level
-
-    if len(argv) > 1:
-        logging.info(indent + f"[{argv[0]}] {argv[1]}")
-    else:
-        logging.info(indent + f"{argv[0]}")
-
-
-def console_debug(*argv):
-    if len(argv) > 1:
-        logging.debug(f"[{argv[0]}] {argv[1]}")
-    else:
-        logging.debug(f"{argv[0]}")
-
-
-def console_warning(*argv):
-    if len(argv) > 1:
-        logging.warning(f"[{argv[0]}] {argv[1]}")
-    else:
-        logging.warning(f"{argv[0]}")
-
-
-def trace_logger(message, *args, **kwargs):
-    logging.log(logging.TRACE, message, *args, **kwargs)
+    return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"].endswith("rocprofv3")
 
 
 def get_version(rocprof_compute_home) -> dict:
@@ -204,11 +153,10 @@ def store_app_cmd(args):
     rocprof_args = args
 
 
-def capture_subprocess_output(subprocess_args, new_env=None, profileMode=False):
-    global rocprof_args
-    # Format command for debug messages, formatting for rocprofv1 and rocprofv2
-    command = " ".join(rocprof_args)
-    console_debug("subprocess", "Running: " + command + " " + " ".join(subprocess_args))
+def capture_subprocess_output(
+    subprocess_args, new_env=None, profileMode=False, enable_logging=True
+):
+    console_debug("subprocess", "Running: " + " ".join(subprocess_args))
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
@@ -240,10 +188,11 @@ def capture_subprocess_output(subprocess_args, new_env=None, profileMode=False):
             # line to read when this function is called
             line = stream.readline()
             buf.write(line)
-            if profileMode:
-                console_log(rocprof_cmd, line.strip(), indent_level=1)
-            else:
-                console_log(line.strip())
+            if enable_logging:
+                if profileMode:
+                    console_log(rocprof_cmd, line.strip(), indent_level=1)
+                else:
+                    console_log(line.strip())
         except UnicodeDecodeError:
             # Skip this line
             pass
@@ -495,6 +444,15 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
         values="Counter_Value",
     ).reset_index()
 
+    # NB: Agent_Id is int in older rocporfv3, now switched to string with prefix "Agent ". We need to make sure handle both cases.
+    console_debug(
+        "The type of Agent ID from counter csv file is {}".format(
+            result["Agent_Id"].dtype
+        )
+    )
+    if result["Agent_Id"].dtype == "object":
+        result["Agent_Id"] = result["Agent_Id"].str.extract("(\d+)").astype("int64")
+
     # Grab the Wave_Front_Size column from agent info
     result = result.merge(
         pd_agent_info[["Node_Id", "Wave_Front_Size"]],
@@ -683,7 +641,7 @@ def run_prof(
             workload_dir + "/out/pmc_1/results_" + fbase + ".csv", index=False
         )
 
-    if new_env and not using_v3():
+    if new_env and not using_v3() and not using_v1():
         # flatten tcc for applicable mi300 input
         f = path(workload_dir + "/out/pmc_1/results_" + fbase + ".csv")
         xcds = total_xcds(mspec.gpu_model, mspec.compute_partition)
@@ -772,38 +730,40 @@ def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
             csv_file = pathlib.Path(json_file).with_suffix(".csv")
             v3_json_to_csv(json_file, csv_file)
         results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*/*.csv")
+
     elif rocprof_output == "csv":
         counter_info_csvs = glob.glob(
             workload_dir + "/out/pmc_1/*/*_counter_collection.csv"
         )
         existing_counter_files_csv = [d for d in counter_info_csvs if path(d).is_file()]
 
-        if len(existing_counter_files_csv) > 0:
+        if existing_counter_files_csv:
             for counter_file in existing_counter_files_csv:
-                current_dir = str(path(counter_file).parent)
-                agent_info_filepath = str(
-                    path(current_dir).joinpath(
-                        path(counter_file).name.replace(
-                            "_counter_collection", "_agent_info"
-                        )
-                    )
+                counter_path = path(counter_file)
+                current_dir = counter_path.parent
+
+                agent_info_filepath = current_dir / counter_path.name.replace(
+                    "_counter_collection", "_agent_info"
                 )
-                if not path(agent_info_filepath).is_file():
+
+                if not agent_info_filepath.is_file():
                     raise ValueError(
                         '{} has no coresponding "agent info" file'.format(counter_file)
                     )
 
-                converted_csv_file = str(
-                    path(current_dir).joinpath(
-                        path(counter_file).name.replace(
-                            "_counter_collection", "_converted"
-                        )
-                    )
+                converted_csv_file = current_dir / counter_path.name.replace(
+                    "_counter_collection", "_converted"
                 )
 
-                v3_counter_csv_to_v2_csv(
-                    counter_file, agent_info_filepath, converted_csv_file
-                )
+                try:
+                    v3_counter_csv_to_v2_csv(
+                        counter_file, str(agent_info_filepath), str(converted_csv_file)
+                    )
+                except Exception as e:
+                    console_warning(
+                        f"Error converting {counter_file} from v3 to v2 csv: {e}"
+                    )
+                    return []
 
             results_files_csv = glob.glob(workload_dir + "/out/pmc_1/*/*_converted.csv")
         elif is_timestamps:
@@ -866,6 +826,7 @@ def replace_timestamps(workload_dir):
 def gen_sysinfo(
     workload_name, workload_dir, ip_blocks, app_cmd, skip_roof, roof_only, mspec, soc
 ):
+    console_debug("[gen_sysinfo]")
     df = mspec.get_class_members()
 
     # Append workload information to machine specs
@@ -909,7 +870,11 @@ def detect_roofline(mspec):
             msg = "user-supplied path to binary not accessible"
             msg += "--> ROOFLINE_BIN = %s\n" % target_binary
             console_error("roofline", msg)
-    elif rhel_distro == "platform:el8" or rhel_distro == "platform:el9":
+    elif (
+        rhel_distro == "platform:el8"
+        or rhel_distro == "platform:el9"
+        or rhel_distro == "platform:al8"
+    ):
         # Must be a valid RHEL machine
         distro = "platform:el8"
     elif (
@@ -1082,47 +1047,58 @@ def flatten_tcc_info_across_xcds(file, xcds, tcc_channel_per_xcd):
     return df
 
 
-def total_xcds(archname, compute_partition):
+def total_xcds(gpu_model, compute_partition):
+    """
+    Returns the number of xcds for a gpu model and compute_partition pair.
+    """
+
+    # For mi300 chips, return result from mi_gpu_spec
+    result = get_mi300_num_xcds(gpu_model, compute_partition)
+    if result:
+        return result
+
+    # For other systems, use manual check
     # check MI300 has a valid compute partition
-    mi300a_archs = ["mi300a_a0", "mi300a_a1"]
-    mi300x_archs = ["mi300x_a0", "mi300x_a1"]
-    mi308x_archs = ["mi308x"]
+    mi300a_model = ["mi300a_a0", "mi300a_a1"]
+    mi300x_model = ["mi300x_a0", "mi300x_a1"]
+    mi308x_model = ["mi308x"]
     if (
-        archname.lower() in mi300a_archs + mi300x_archs + mi308x_archs
+        gpu_model.lower() in mi300a_model + mi300x_model + mi308x_model
         and compute_partition == "NA"
     ):
-        console_error("Invalid compute partition found for {}".format(archname))
-    if archname.lower() not in mi300a_archs + mi300x_archs + mi308x_archs:
+        console_error("Invalid compute partition found for {}".format(gpu_model))
+
+    if gpu_model.lower() not in mi300a_model + mi300x_model + mi308x_model:
         return 1
     # from the whitepaper
     # https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/white-papers/amd-cdna-3-white-paper.pdf
     if compute_partition.lower() == "spx":
-        if archname.lower() in mi300a_archs:
+        if gpu_model.lower() in mi300a_model:
             return 6
-        if archname.lower() in mi300x_archs:
+        if gpu_model.lower() in mi300x_model:
             return 8
-        if archname.lower() in mi308x_archs:
+        if gpu_model.lower() in mi308x_model:
             return 4
     if compute_partition.lower() == "tpx":
-        if archname.lower() in mi300a_archs:
+        if gpu_model.lower() in mi300a_model:
             return 2
     if compute_partition.lower() == "dpx":
-        if archname.lower() in mi300x_archs:
+        if gpu_model.lower() in mi300x_model:
             return 4
-        if archname.lower() in mi308x_archs:
+        if gpu_model.lower() in mi308x_model:
             return 2
     if compute_partition.lower() == "qpx":
-        if archname.lower() in mi300x_archs:
+        if gpu_model.lower() in mi300x_model:
             return 2
     if compute_partition.lower() == "cpx":
-        if archname.lower() in mi300x_archs:
-            return 2
-        if archname.lower() in mi308x_archs:
+        if gpu_model.lower() in mi300x_model:
+            return 1
+        if gpu_model.lower() in mi308x_model:
             return 1
     # TODO implement other archs here as needed
     console_error(
         "Unknown compute partition / arch found for {} / {}".format(
-            compute_partition, archname
+            compute_partition, gpu_model
         )
     )
 
@@ -1173,13 +1149,25 @@ def print_status(msg):
 
 def set_locale_encoding():
     try:
+        # Attempt to set the locale to 'C.UTF-8'
         locale.setlocale(locale.LC_ALL, "C.UTF-8")
-    except locale.Error as error:
-        console_error(
-            "Please ensure that the 'C.UTF-8' locale is available on your system.",
-            exit=False,
-        )
-        console_error(error)
+    except locale.Error:
+        # If 'C.UTF-8' is not available, check if the current locale is UTF-8 based
+        current_locale = locale.getdefaultlocale()
+        if current_locale and "UTF-8" in current_locale[1]:
+            try:
+                locale.setlocale(locale.LC_ALL, current_locale[0])
+            except locale.Error as error:
+                console_error(
+                    "Failed to set locale to the current UTF-8-based locale.",
+                    exit=False,
+                )
+                console_error(error)
+        else:
+            console_error(
+                "Please ensure that a UTF-8-based locale is available on your system.",
+                exit=False,
+            )
 
 
 def reverse_multi_index_df_pmc(final_df):

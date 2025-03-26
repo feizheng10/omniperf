@@ -62,12 +62,6 @@ ALL_CSVS = sorted(
         "pmc_perf_2.csv",
         "pmc_perf_3.csv",
         "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
-        "pmc_perf_6.csv",
-        "pmc_perf_7.csv",
-        "pmc_perf_8.csv",
-        "pmc_perf_9.csv",
-        "pmc_perf_10.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -87,9 +81,6 @@ ALL_CSVS_MI200 = sorted(
         "pmc_perf_4.csv",
         "pmc_perf_5.csv",
         "pmc_perf_6.csv",
-        "pmc_perf_7.csv",
-        "pmc_perf_8.csv",
-        "pmc_perf_9.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -109,8 +100,6 @@ ALL_CSVS_MI300 = sorted(
         "pmc_perf_4.csv",
         "pmc_perf_5.csv",
         "pmc_perf_6.csv",
-        "pmc_perf_7.csv",
-        "pmc_perf_8.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -118,9 +107,7 @@ ALL_CSVS_MI300 = sorted(
 
 ROOF_ONLY_FILES = sorted(
     [
-        "empirRoof_gpu-0_fp32_fp64.pdf",
-        "empirRoof_gpu-0_int8_fp16.pdf",
-        "empirRoof_gpu-0_fp8.pdf",
+        "empirRoof_gpu-0_FP32.pdf",
         "pmc_perf.csv",
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
@@ -615,9 +602,6 @@ def test_block_SQ(binary_handler_profile_rocprof_compute):
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
         "pmc_perf_2.csv",
-        "pmc_perf_3.csv",
-        "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -636,8 +620,6 @@ def test_block_SQ(binary_handler_profile_rocprof_compute):
             "pmc_perf_4.csv",
             "pmc_perf_5.csv",
             "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
             "sysinfo.csv",
             "timestamps.csv",
         ]
@@ -665,7 +647,6 @@ def test_block_SQC(binary_handler_profile_rocprof_compute):
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
         "pmc_perf_2.csv",
-        "pmc_perf_3.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -801,27 +782,9 @@ def test_block_TCC(binary_handler_profile_rocprof_compute):
         "pmc_perf_5.csv",
         "pmc_perf_6.csv",
         "pmc_perf_7.csv",
-        "pmc_perf_8.csv",
-        "pmc_perf_9.csv",
-        "pmc_perf_10.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
-    if soc == "MI200" or "MI300" in soc:
-        expected_csvs = [
-            "pmc_perf.csv",
-            "pmc_perf_0.csv",
-            "pmc_perf_1.csv",
-            "pmc_perf_2.csv",
-            "pmc_perf_3.csv",
-            "pmc_perf_4.csv",
-            "pmc_perf_5.csv",
-            "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
-            "sysinfo.csv",
-            "timestamps.csv",
-        ]
 
     assert sorted(list(file_dict.keys())) == sorted(expected_csvs)
 
@@ -851,7 +814,6 @@ def test_block_SPI(binary_handler_profile_rocprof_compute):
         "pmc_perf_5.csv",
         "pmc_perf_6.csv",
         "pmc_perf_7.csv",
-        "pmc_perf_8.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -881,7 +843,6 @@ def test_block_CPC(binary_handler_profile_rocprof_compute):
         "pmc_perf_2.csv",
         "pmc_perf_3.csv",
         "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -937,9 +898,6 @@ def test_block_SQ_CPC(binary_handler_profile_rocprof_compute):
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
         "pmc_perf_2.csv",
-        "pmc_perf_3.csv",
-        "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -958,8 +916,6 @@ def test_block_SQ_CPC(binary_handler_profile_rocprof_compute):
             "pmc_perf_4.csv",
             "pmc_perf_5.csv",
             "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
             "sysinfo.csv",
             "timestamps.csv",
         ]
@@ -992,9 +948,6 @@ def test_block_SQ_TA(binary_handler_profile_rocprof_compute):
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
         "pmc_perf_2.csv",
-        "pmc_perf_3.csv",
-        "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -1013,8 +966,6 @@ def test_block_SQ_TA(binary_handler_profile_rocprof_compute):
             "pmc_perf_4.csv",
             "pmc_perf_5.csv",
             "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
             "sysinfo.csv",
             "timestamps.csv",
         ]
@@ -1043,9 +994,6 @@ def test_block_SQ_SPI(binary_handler_profile_rocprof_compute):
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
         "pmc_perf_2.csv",
-        "pmc_perf_3.csv",
-        "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -1064,8 +1012,6 @@ def test_block_SQ_SPI(binary_handler_profile_rocprof_compute):
             "pmc_perf_4.csv",
             "pmc_perf_5.csv",
             "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
             "sysinfo.csv",
             "timestamps.csv",
         ]
@@ -1099,7 +1045,6 @@ def test_block_SQ_SQC_TCP_CPC(binary_handler_profile_rocprof_compute):
         "pmc_perf_2.csv",
         "pmc_perf_3.csv",
         "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -1118,8 +1063,6 @@ def test_block_SQ_SQC_TCP_CPC(binary_handler_profile_rocprof_compute):
             "pmc_perf_4.csv",
             "pmc_perf_5.csv",
             "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
             "sysinfo.csv",
             "timestamps.csv",
         ]
@@ -1148,9 +1091,6 @@ def test_block_SQ_SPI_TA_TCC_CPF(binary_handler_profile_rocprof_compute):
         "pmc_perf_0.csv",
         "pmc_perf_1.csv",
         "pmc_perf_2.csv",
-        "pmc_perf_3.csv",
-        "pmc_perf_4.csv",
-        "pmc_perf_5.csv",
         "sysinfo.csv",
         "timestamps.csv",
     ]
@@ -1169,8 +1109,6 @@ def test_block_SQ_SPI_TA_TCC_CPF(binary_handler_profile_rocprof_compute):
             "pmc_perf_4.csv",
             "pmc_perf_5.csv",
             "pmc_perf_6.csv",
-            "pmc_perf_7.csv",
-            "pmc_perf_8.csv",
             "sysinfo.csv",
             "timestamps.csv",
         ]
