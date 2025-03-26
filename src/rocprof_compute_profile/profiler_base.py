@@ -45,10 +45,10 @@ from utils.logger import (
 from utils.utils import (
     capture_subprocess_output,
     gen_sysinfo,
+    pc_sampling_prof,
     print_status,
     run_prof,
     run_rocscope,
-    pc_sampling_prof,
 )
 
 

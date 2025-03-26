@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from utils import schema
-from utils.utils import console_error, console_warning, console_debug, demarcate
+from utils.utils import console_debug, console_error, console_warning, demarcate
 
 # ------------------------------------------------------------------------------
 # Internal global definitions
