@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from utils import schema
-from utils.utils import console_error, console_warning, demarcate
+from utils.utils import console_error, console_warning, console_debug, demarcate
 
 # ------------------------------------------------------------------------------
 # Internal global definitions
@@ -638,6 +638,7 @@ def build_dfs(archConfigs, filter_metrics, sys_info):
                     df = pd.DataFrame(
                         [data_config["source"]], columns=["from_pc_sampling"]
                     )
+                    metric_list[data_source_idx] = panel["title"]
                 else:
                     df = pd.DataFrame()
 
@@ -1037,12 +1038,14 @@ def load_pc_sampling_data_per_kernel(file_name, kernel_name):
     if not kernel_info:
         console_warning("PC sampling: can not find the kernel %s " % kernel_name)
         return pd.DataFrame()
+    else:
+        console_debug("PC sampling: kernel %s " % kernel_info)
 
     filtered_sorted_list = sorted(
         [
             item
             for item in kernel_info_list
-            if item["code_object_id"] == kernel_info["kernel_id"]
+            if item["code_object_id"] == kernel_info["code_object_id"]
         ],
         key=lambda x: x["kernel_code_entry_byte_offset"],
     )
