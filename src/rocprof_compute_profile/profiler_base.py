@@ -429,7 +429,6 @@ class RocProfCompute_Base:
                 interval=self.get_args().pc_sampling_interval,
                 workload_dir=self.get_args().path,
                 appcmd=self.get_args().remaining,
-                loglevel=self.get_args().loglevel,
             )
             end_run_prof = time.time()
             console_debug(

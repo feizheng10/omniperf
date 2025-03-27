@@ -999,6 +999,10 @@ def search_pc_sampling_record(records):
             grouped_data[code_object_id][code_object_offset]["count"] += 1
             grouped_data[code_object_id][code_object_offset]["inst_index"] = inst_index
 
+    if (len(grouped_data) == 0):
+        console_warning("PC sampling: no pc sampling record found!")
+        return None
+
     # Convert to sorted list of tuples (code_object_id, inst_index, code_object_offset, count)
     sorted_counts = sorted(
         [
