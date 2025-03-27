@@ -451,7 +451,19 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
         )
     )
     if result["Agent_Id"].dtype == "object":
-        result["Agent_Id"] = result["Agent_Id"].str.extract("(\d+)").astype("int64")
+        # Apply the function to the 'Agent_Id' column and store it as int64
+        try:
+            result["Agent_Id"] = (
+                result["Agent_Id"]
+                .apply(lambda x: int(re.search(r"Agent (\d+)", x).group(1)))
+                .astype("int64")
+            )
+        except Exception as e:
+            console_error(
+                'Parsing rocprofv3 csv output: Error of getting "Agent_Id", the error message "{}"'.format(
+                    e
+                )
+            )
 
     # Grab the Wave_Front_Size column from agent info
     result = result.merge(
@@ -549,7 +561,7 @@ def run_prof(
     # standard rocprof options
     default_options = ["-i", fname]
     options = default_options + profiler_options
-    if path_counter_config_yaml.exists():
+    if using_v3() and path_counter_config_yaml.exists():
         options = ["-E", str(path_counter_config_yaml)] + options
 
     # set required env var for mi300

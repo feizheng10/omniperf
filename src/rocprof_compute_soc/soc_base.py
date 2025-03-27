@@ -255,6 +255,10 @@ class OmniSoC_Base:
         # Handle TCC channel counters: if hw_counter_matches has elements ending with '['
         # Expand and interleve the TCC channel counters
         # e.g.  TCC_HIT[0] TCC_ATOMIC[0] ... TCC_HIT[1] TCC_ATOMIC[1] ...
+        num_xcd_for_pmc_file = 1
+        if using_v3():
+            num_xcd_for_pmc_file = int(self._mspec.num_xcd)
+
         for counter_name in counters.copy():
             if counter_name.startswith("TCC") and counter_name.endswith("["):
                 counters.remove(counter_name)
@@ -262,9 +266,7 @@ class OmniSoC_Base:
                 counters = counters.union(
                     {
                         f"{counter_name}[{i}]"
-                        for i in range(
-                            int(self._mspec.num_xcd) * int(self._mspec._l2_banks)
-                        )
+                        for i in range(num_xcd_for_pmc_file * int(self._mspec._l2_banks))
                     }
                 )
 
@@ -309,10 +311,7 @@ class OmniSoC_Base:
                     if counter_name.startswith(tuple(filter_hardware_blocks))
                 }
 
-        if using_v3():
-            # Counters not supported in rocprof v3
-            counters = counters - {"TCC_BUBBLE"}
-        else:
+        if not using_v3():
             # Counters not supported in rocprof v1 / v2
             counters = counters - {"SQ_INSTS_VALU_MFMA_F8", "SQ_INSTS_VALU_MFMA_MOPS_F8"}
 
@@ -322,6 +321,9 @@ class OmniSoC_Base:
         counters = counters - {"SQC_DCACHE_INFLIGHT_LEVEL"}
         if self.__arch not in ("gfx908", "gfx90a"):
             counters = counters - {"TCP_TCP_LATENCY_sum"}
+
+        # SQ_ACCUM_PREV_HIRES will be injected for level counters later on
+        counters = counters - {"SQ_ACCUM_PREV_HIRES"}
 
         # Coalesce and writeback workload specific perfmon
         self.perfmon_coalesce(counters)
