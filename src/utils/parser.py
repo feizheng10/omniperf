@@ -635,9 +635,11 @@ def build_dfs(archConfigs, filter_metrics, sys_info):
                         df = pd.DataFrame()
                 elif type == "pc_sampling_table":
                     data_source_idx = str(data_config["id"] // 100)
-                    df = pd.DataFrame(
-                        [data_config["source"]], columns=["from_pc_sampling"]
-                    )
+                    # NB: enable pc sampling only when users specify, not enable as default
+                    if filter_metrics and (data_source_idx in filter_metrics):
+                        df = pd.DataFrame(
+                            [data_config["source"]], columns=["from_pc_sampling"]
+                        )
                     metric_list[data_source_idx] = panel["title"]
                 else:
                     df = pd.DataFrame()
