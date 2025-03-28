@@ -330,7 +330,7 @@ Examples:
         metavar="",
         dest="pc_sampling_interval",
         default=1,
-        help="\t\t\tSet the interval of pc sampling in microsecond.",
+        help="\t\t\tSet the interval of pc sampling in microsecond (DEFAULT: 1).",
     )
 
     ## Roofline Command Line Options
