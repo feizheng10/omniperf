@@ -1112,6 +1112,9 @@ def load_pc_sampling_data(workload, dir, file_prefix):
     then return df.
     """
 
+    if file_prefix.lower() == "none":
+        return pd.DataFrame()
+
     # No kernel filter, return grouped and sorted csv directly
     if not workload.filter_kernel_ids:
         # NB: the default file name is subject to changes from rocprofv3
