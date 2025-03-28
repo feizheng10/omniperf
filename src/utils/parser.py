@@ -1122,7 +1122,7 @@ def load_pc_sampling_data(workload, dir, file_prefix):
             Path(dir), file_prefix + "_pc_sampling_host_trap.csv"
         )
         if not csv_file_path.exists():
-            console_warning("PC sampling: can not read %s " % csv_file_path)
+            console_error("PC sampling: can not read %s " % csv_file_path)
             return pd.DataFrame()
         else:
             df = pd.read_csv(csv_file_path)
@@ -1160,7 +1160,7 @@ def load_pc_sampling_data(workload, dir, file_prefix):
         # NB: the default file name is subject to changes from rocprofv3
         json_file_path = Path.joinpath(Path(dir), file_prefix + "_results.json")
         if not json_file_path.exists():
-            console_warning("PC sampling: can not read %s " % json_file_path)
+            console_error("PC sampling: can not read %s " % json_file_path)
             return pd.DataFrame()
         else:
             # NB:
