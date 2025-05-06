@@ -1055,17 +1055,17 @@ def search_pc_sampling_record(records):
                 "count": 0,
                 "inst_index": None,
                 "stall_reason": {
-                    "NOT_ISSUED_REASON_NONE": 0,
-                    "NOT_ISSUED_REASON_NO_INSTRUCTION_AVAILABLE": 0,  # No instruction available in the instruction cache.
-                    "NOT_ISSUED_REASON_ALU_DEPENDENCY": 0,  # ALU dependency not resolved.
-                    "NOT_ISSUED_REASON_WAITCNT": 0,
-                    "NOT_ISSUED_REASON_INTERNAL_INSTRUCTION": 0,  # Wave executes an internal instruction.
-                    "NOT_ISSUED_REASON_BARRIER_WAIT": 0,
-                    "NOT_ISSUED_REASON_ARBITER_NOT_WIN": 0,  # The instruction did not win the arbiter.
-                    "NOT_ISSUED_REASON_ARBITER_WIN_EX_STALL": 0,  # Arbiter issued an instruction, but the execution pipe pushed it back from execution.
-                    "NOT_ISSUED_REASON_OTHER_WAIT": 0,  #  Other types of wait (e.g., wait for XNACK acknowledgment).
-                    "NOT_ISSUED_REASON_SLEEP_WAIT": 0,
-                    "NOT_ISSUED_REASON_LAST": 0,
+                    "NONE": 0,
+                    "NO_INSTRUCTION_AVAILABLE": 0,  # No instruction available in the instruction cache.
+                    "ALU_DEPENDENCY": 0,  # ALU dependency not resolved.
+                    "WAITCNT": 0,
+                    "INTERNAL_INSTRUCTION": 0,  # Wave executes an internal instruction.
+                    "BARRIER_WAIT": 0,
+                    "ARBITER_NOT_WIN": 0,  # The instruction did not win the arbiter.
+                    "ARBITER_WIN_EX_STALL": 0,  # Arbiter issued an instruction, but the execution pipe pushed it back from execution.
+                    "OTHER_WAIT": 0,  #  Other types of wait (e.g., wait for XNACK acknowledgment).
+                    "SLEEP_WAIT": 0,
+                    "LAST": 0,
                 },
             }
         )
@@ -1090,9 +1090,9 @@ def search_pc_sampling_record(records):
             grouped_data[code_object_id][code_object_offset]["inst_index"] = inst_index
 
             if snapshot is not None:
-                # NB: 36 is the length of prefix "ROCPROFILER_PC_SAMPLING_INSTRUCTION_"
+                # NB: 54 is the length of prefix "ROCPROFILER_PC_SAMPLING_INSTRUCTION_NOT_ISSUED_REASON_"
                 grouped_data[code_object_id][code_object_offset]["stall_reason"][
-                    snapshot.get("stall_reason")[36:]
+                    snapshot.get("stall_reason")[54:]
                 ] += 1
                 # print(
                 #     inst_index,
@@ -1113,7 +1113,12 @@ def search_pc_sampling_record(records):
                 info["inst_index"],
                 offset,
                 info["count"],
-                info["stall_reason"],
+                # For info["stall_reason"], remove the zero entries, sorting the remaining items by their values in descending order
+                sorted(
+                    ((k, v) for k, v in info["stall_reason"].items() if v > 0),
+                    key=lambda item: item[1],
+                    reverse=True
+                )
             )
             for code_object_id, offsets in grouped_data.items()
             for offset, info in offsets.items()
@@ -1211,6 +1216,8 @@ def load_pc_sampling_data_per_kernel(
     ][["inst_index", "offset", "count", "stall_reason"]]
 
     df["offset"] = df["offset"].apply(lambda x: hex(x))
+
+    # df["stall_reason"] = df["stall_reason"].apply(lambda x: ', '.join(f"{k}: {v}" for k, v in x))
 
     pc_sample_instructions = search_key_in_json(file_name, "pc_sample_instructions")
     # print(pc_sample_instructions)
