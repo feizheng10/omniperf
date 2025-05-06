@@ -718,18 +718,21 @@ def run_prof(
     df.to_csv(workload_dir + "/" + fbase + ".csv", index=False)
 
 
-def pc_sampling_prof(interval, workload_dir, appcmd):
+def pc_sampling_prof(method, interval, workload_dir, appcmd):
     """
     Run rocprof with pc sampling. Current support v3 only.
     """
     # Todo:
     #   - precheck with rocprofv3 –-list-avail
+
+    unit = "time" if method == "host_trap" else "cycles"
+
     options = [
         "--pc-sampling-beta-enable",
         "--pc-sampling-method",
-        "host_trap",
+        method,
         "--pc-sampling-unit",
-        "time",
+        unit,
         "--output-format",
         "csv",
         "json",

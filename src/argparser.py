@@ -325,12 +325,21 @@ Examples:
     )
 
     profile_group.add_argument(
+        "--pc-sampling-method",
+        required=False,
+        metavar="",
+        dest="pc_sampling_method",
+        default="stochastic",
+        help="\t\t\tSet the method of pc sampling, stochastic or host_trap. Support stochastic only >= MI300",
+    )
+
+    profile_group.add_argument(
         "--pc-sampling-interval",
         required=False,
         metavar="",
         dest="pc_sampling_interval",
-        default=1,
-        help="\t\t\tSet the interval of pc sampling in microsecond (DEFAULT: 1).",
+        default=1048576,
+        help="\t\t\tSet the interval of pc sampling.\n\t\t\t   For stochastic sampling, the interval is in cycles.\n\t\t\t   For host_tracp sampling, the interval is in microsecond (DEFAULT: 1048576).",
     )
 
     ## Roofline Command Line Options
