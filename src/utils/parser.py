@@ -1055,11 +1055,17 @@ def search_pc_sampling_record(records):
                 "count": 0,
                 "inst_index": None,
                 "stall_reason": {
-                    "NOT_ISSUED_REASON_OTHER_WAIT": 0,
-                    "NOT_ISSUED_REASON_NO_INSTRUCTION_AVAILABLE": 0,
-                    "NOT_ISSUED_REASON_ALU_DEPENDENCY": 0,
-                    "NOT_ISSUED_REASON_ARBITER_NOT_WIN": 0,
-                    "NOT_ISSUED_REASON_INTERNAL_INSTRUCTION": 0,
+                    "NOT_ISSUED_REASON_NONE": 0,
+                    "NOT_ISSUED_REASON_NO_INSTRUCTION_AVAILABLE": 0,  # No instruction available in the instruction cache.
+                    "NOT_ISSUED_REASON_ALU_DEPENDENCY": 0,  # ALU dependency not resolved.
+                    "NOT_ISSUED_REASON_WAITCNT": 0,
+                    "NOT_ISSUED_REASON_INTERNAL_INSTRUCTION": 0,  # Wave executes an internal instruction.
+                    "NOT_ISSUED_REASON_BARRIER_WAIT": 0,
+                    "NOT_ISSUED_REASON_ARBITER_NOT_WIN": 0,  # The instruction did not win the arbiter.
+                    "NOT_ISSUED_REASON_ARBITER_WIN_EX_STALL": 0,  # Arbiter issued an instruction, but the execution pipe pushed it back from execution.
+                    "NOT_ISSUED_REASON_OTHER_WAIT": 0,  #  Other types of wait (e.g., wait for XNACK acknowledgment).
+                    "NOT_ISSUED_REASON_SLEEP_WAIT": 0,
+                    "NOT_ISSUED_REASON_LAST": 0,
                 },
             }
         )
@@ -1359,7 +1365,7 @@ def load_kernel_top(workload, dir, args):
 
 
 @demarcate
-def load_table_data(workload, dir, is_gui, debug, args, skipKernelTop=False):
+def load_table_data(workload, dir, is_gui, args, skipKernelTop=False):
     """
     - Load data for all "raw_csv_table"
     - Load dat for "pc_sampling_table"
@@ -1373,7 +1379,7 @@ def load_table_data(workload, dir, is_gui, debug, args, skipKernelTop=False):
         workload.dfs_type,
         workload.sys_info.iloc[0],
         apply_filters(workload, dir, is_gui, args.debug),
-        debug,
+        args.debug,
     )
 
 
