@@ -1089,7 +1089,7 @@ def search_pc_sampling_record(records):
             # NB: the write here could be duplicated. If there is perf issue, We might want to opt it.
             grouped_data[code_object_id][code_object_offset]["inst_index"] = inst_index
 
-            if snapshot is not None:
+            if len(snapshot):
                 # NB: 54 is the length of prefix "ROCPROFILER_PC_SAMPLING_INSTRUCTION_NOT_ISSUED_REASON_"
                 grouped_data[code_object_id][code_object_offset]["stall_reason"][
                     snapshot.get("stall_reason")[54:]
@@ -1117,8 +1117,8 @@ def search_pc_sampling_record(records):
                 sorted(
                     ((k, v) for k, v in info["stall_reason"].items() if v > 0),
                     key=lambda item: item[1],
-                    reverse=True
-                )
+                    reverse=True,
+                ),
             )
             for code_object_id, offsets in grouped_data.items()
             for offset, info in offsets.items()
@@ -1244,7 +1244,7 @@ def load_pc_sampling_data_per_kernel(
 
 
 @demarcate
-def load_pc_sampling_data(workload, dir, file_prefix, pc_sampling_method):
+def load_pc_sampling_data(workload, dir, file_prefix):
     """
     Load PC sampling raw data, filter and sort it by specified conditions,
     then return df.
@@ -1253,42 +1253,52 @@ def load_pc_sampling_data(workload, dir, file_prefix, pc_sampling_method):
     if file_prefix.lower() == "none":
         return pd.DataFrame()
 
+    pc_sampling_method = None
+
+    # NB:
+    #  - The default file name is subject to changes from rocprofv3
+    #  - Prioritize stochastic
+    #  - Alternatively, we could check pc_sampling_method in json
+    csv_file_path = Path.joinpath(Path(dir), file_prefix + "_pc_sampling_stochastic.csv")
+    if csv_file_path.exists():
+        pc_sampling_method = "stochastic"
+    else:
+        csv_file_path = Path.joinpath(
+            Path(dir), file_prefix + "_pc_sampling_host_trap.csv"
+        )
+        if csv_file_path.exists():
+            pc_sampling_method = "host_trap"
+
+    if pc_sampling_method == None:
+        console_error("PC sampling: can not find %s " % csv_file_path)
+        return pd.DataFrame()
+
     # No kernel filter, return grouped and sorted csv directly
     if not workload.filter_kernel_ids:
-        # NB: the default file name is subject to changes from rocprofv3
-        csv_file_path = (
-            Path.joinpath(Path(dir), file_prefix + "_pc_sampling_host_trap.csv")
-            if pc_sampling_method == "host_trap"
-            else Path.joinpath(Path(dir), file_prefix + "_pc_sampling_stochastic.csv")
+
+        df = pd.read_csv(csv_file_path)
+        # Group by 'Instruction_Comment' and count occurrences
+        grouped_counts = (
+            df.groupby("Instruction_Comment")
+            .agg(
+                count=("Instruction_Comment", "count"),
+                instruction=("Instruction", "first"),
+            )
+            .reset_index()
+            .rename(columns={"Instruction_Comment": "source_line"})
         )
 
-        if not csv_file_path.exists():
-            console_error("PC sampling: can not read %s " % csv_file_path)
-            return pd.DataFrame()
-        else:
-            df = pd.read_csv(csv_file_path)
-            # Group by 'Instruction_Comment' and count occurrences
-            grouped_counts = (
-                df.groupby("Instruction_Comment")
-                .agg(
-                    count=("Instruction_Comment", "count"),
-                    instruction=("Instruction", "first"),
-                )
-                .reset_index()
-                .rename(columns={"Instruction_Comment": "source_line"})
-            )
+        grouped_counts = grouped_counts[["source_line", "instruction", "count"]]
 
-            grouped_counts = grouped_counts[["source_line", "instruction", "count"]]
+        grouped_counts["source_line"] = grouped_counts["source_line"].apply(
+            lambda x: (".../" + Path(x).name)
+        )
 
-            grouped_counts["source_line"] = grouped_counts["source_line"].apply(
-                lambda x: (".../" + Path(x).name)
-            )
+        # Sort by the count of occurrences
+        sorted_counts = grouped_counts.sort_values(by="count", ascending=False)
+        # print(sorted_counts.info)
 
-            # Sort by the count of occurrences
-            sorted_counts = grouped_counts.sort_values(by="count", ascending=False)
-            # print(sorted_counts.info)
-
-            return sorted_counts
+        return sorted_counts
 
     elif len(workload.filter_kernel_ids) > 1:
         console_error(
@@ -1363,9 +1373,7 @@ def load_kernel_top(workload, dir, args):
                     f"Couldn't load {file.name}. This may result in missing analysis data."
                 )
         elif "from_pc_sampling" in df.columns:
-            tmp[id] = load_pc_sampling_data(
-                workload, dir, df.loc[0, "from_pc_sampling"], args.pc_sampling_method
-            )
+            tmp[id] = load_pc_sampling_data(workload, dir, df.loc[0, "from_pc_sampling"])
             # print("table id", id, "filter_kernel_ids", workload.filter_kernel_ids)
 
     workload.dfs.update(tmp)
