@@ -61,8 +61,7 @@ class webui_analysis(OmniAnalyze_Base):
         # define any elements which will have full width
         self.__full_width_elements = {1801}
 
-        if hasattr(args, "roofline_data_type") and args.roofline_data_type != ["FP32"]:
-            self.__roofline_data_type = args.roofline_data_type
+        self.__roofline_data_type = args.roofline_data_type
 
     @demarcate
     def build_layout(self, input_filters, arch_configs):
@@ -348,7 +347,7 @@ class webui_analysis(OmniAnalyze_Base):
                 debug=False, host="0.0.0.0", port=random.randint(1024, 49151)
             )
         else:
-            self.app.run_server(debug=False, host="0.0.0.0", port=args.gui)
+            self.app.run(debug=False, host="0.0.0.0", port=args.gui)
 
 
 @demarcate

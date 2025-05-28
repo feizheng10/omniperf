@@ -47,7 +47,7 @@ from utils.logger import (
     setup_file_handler,
     setup_logging_priority,
 )
-from utils.mi_gpu_spec import get_gpu_series_dict, parse_mi_gpu_spec
+from utils.mi_gpu_spec import mi_gpu_specs
 from utils.specs import MachineSpecs, generate_machine_specs
 from utils.utils import (
     detect_rocprof,
@@ -72,8 +72,7 @@ class RocProfCompute:
             "ver_pretty": None,
         }
         self.__options = {}
-        parse_mi_gpu_spec()
-        self.__supported_archs = get_gpu_series_dict()
+        self.__supported_archs = mi_gpu_specs.get_gpu_series_dict()
         self.__mspec: MachineSpecs = None  # to be initalized in load_soc_specs()
         setup_console_handler()
         self.set_version()
@@ -127,17 +126,19 @@ class RocProfCompute:
             else:
                 self.__profiler_mode = "rocscope"
         else:
-            rocprof_cmd = detect_rocprof()
-            if str(rocprof_cmd).endswith("rocprof"):
+            profiler_mode = detect_rocprof(self.__args)
+            if str(profiler_mode).endswith("rocprof"):
                 self.__profiler_mode = "rocprofv1"
-            elif str(rocprof_cmd).endswith("rocprofv2"):
+            elif str(profiler_mode).endswith("rocprofv2"):
                 self.__profiler_mode = "rocprofv2"
-            elif str(rocprof_cmd).endswith("rocprofv3"):
+            elif str(profiler_mode).endswith("rocprofv3"):
                 self.__profiler_mode = "rocprofv3"
+            elif str(profiler_mode) == "rocprofiler-sdk":
+                self.__profiler_mode = "rocprofiler-sdk"
             else:
                 console_error(
                     "Incompatible profiler: %s. Supported profilers include: %s"
-                    % (rocprof_cmd, get_submodules("rocprof_compute_profile"))
+                    % (profiler_mode, get_submodules("rocprof_compute_profile"))
                 )
         return
 
@@ -251,6 +252,9 @@ class RocProfCompute:
         elif self.__args.name is None:
             sys.exit("Either --list-name or --name is required")
 
+        if self.__args.name.find("/") != -1:
+            console_error("'/' not permitted in profile name")
+
         # Deprecation warning for hardware blocks
         if [
             name
@@ -301,6 +305,17 @@ class RocProfCompute:
             from rocprof_compute_profile.profiler_rocscope import rocscope_profiler
 
             profiler = rocscope_profiler(
+                self.__args,
+                self.__profiler_mode,
+                self.__soc[self.__mspec.gpu_arch],
+                self.__supported_archs,
+            )
+        elif self.__profiler_mode == "rocprofiler-sdk":
+            from rocprof_compute_profile.profiler_rocprofiler_sdk import (
+                rocprofiler_sdk_profiler,
+            )
+
+            profiler = rocprofiler_sdk_profiler(
                 self.__args,
                 self.__profiler_mode,
                 self.__soc[self.__mspec.gpu_arch],

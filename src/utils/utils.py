@@ -42,8 +42,14 @@ from pathlib import Path as path
 import pandas as pd
 
 import config
-from utils.logger import console_debug, console_error, console_log, console_warning
-from utils.mi_gpu_spec import get_num_xcds
+from utils.logger import (
+    console_debug,
+    console_error,
+    console_log,
+    console_warning,
+    demarcate,
+)
+from utils.mi_gpu_spec import mi_gpu_specs
 
 rocprof_cmd = ""
 rocprof_args = ""
@@ -75,7 +81,11 @@ def using_v1():
 
 def using_v3():
     return "ROCPROF" not in os.environ.keys() or (
-        "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"].endswith("rocprofv3")
+        "ROCPROF" in os.environ.keys()
+        and (
+            os.environ["ROCPROF"].endswith("rocprofv3")
+            or os.environ["ROCPROF"] == "rocprofiler-sdk"
+        )
     )
 
 
@@ -135,9 +145,23 @@ def get_version_display(version, sha, mode):
     return buf.getvalue()
 
 
-def detect_rocprof():
+def detect_rocprof(args):
     """Detect loaded rocprof version. Resolve path and set cmd globally."""
     global rocprof_cmd
+
+    if os.environ.get("ROCPROF") == "rocprofiler-sdk":
+        if not path(args.rocprofiler_sdk_library_path).exists():
+            console_error(
+                "Could not find rocprofiler-sdk library at "
+                + args.rocprofiler_sdk_library_path
+            )
+        rocprof_cmd = "rocprofiler-sdk"
+        console_debug("rocprof_cmd is {}".format(rocprof_cmd))
+        console_debug(
+            "rocprofiler_sdk_path is {}".format(args.rocprofiler_sdk_library_path)
+        )
+        return rocprof_cmd
+
     # detect rocprof
     if not "ROCPROF" in os.environ.keys():
         rocprof_cmd = "rocprofv3"
@@ -569,6 +593,35 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
     result.to_csv(converted_csv_file, index=False)
 
 
+def parse_text(text_file):
+    """
+    Parse the text file to get the pmc counters.
+    """
+
+    def process_line(line):
+        if "pmc:" not in line:
+            return ""
+        line = line.strip()
+        pos = line.find("#")
+        if pos >= 0:
+            line = line[0:pos]
+
+        def _dedup(_line, _sep):
+            for itr in _sep:
+                _line = " ".join(_line.split(itr))
+            return _line.strip()
+
+        # remove tabs and duplicate spaces
+        return _dedup(line.replace("pmc:", ""), ["\n", "\t", " "]).split(" ")
+
+    with open(text_file, "r") as file:
+        return [
+            counter
+            for litr in [process_line(itr) for itr in file.readlines()]
+            for counter in litr
+        ]
+
+
 def run_prof(
     fname, profiler_options, workload_dir, mspec, loglevel, format_rocprof_output
 ):
@@ -579,10 +632,26 @@ def run_prof(
 
     path_counter_config_yaml = path(fname).with_suffix(".yaml")
     # standard rocprof options
-    default_options = ["-i", fname]
-    options = default_options + profiler_options
+    if rocprof_cmd == "rocprofiler-sdk":
+        options = profiler_options
+        options["ROCPROF_COUNTER_COLLECTION"] = "1"
+        options["ROCPROF_COUNTERS"] = "pmc: " + " ".join(parse_text(fname))
+    else:
+        default_options = ["-i", fname]
+        options = default_options + profiler_options
+
+    if using_v3():
+        if rocprof_cmd == "rocprofiler-sdk":
+            options["ROCPROF_AGENT_INDEX"] = "absolute"
+        else:
+            options = ["-A", "absolute"] + options
+
     if using_v3() and path_counter_config_yaml.exists():
-        options = ["-E", str(path_counter_config_yaml)] + options
+        if rocprof_cmd == "rocprofiler-sdk":
+            with open(path_counter_config_yaml, "r") as file:
+                options["ROCPROF_EXTRA_COUNTERS_CONTENTS"] = file.read()
+        else:
+            options = ["-E", str(path_counter_config_yaml)] + options
 
     # set required env var for mi300
     new_env = None
@@ -595,16 +664,26 @@ def run_prof(
         is_timestamps = True
     time_1 = time.time()
 
-    console_debug("rocprof command: {}".format([rocprof_cmd] + options))
-    # profile the app
-    if new_env:
+    if rocprof_cmd == "rocprofiler-sdk":
+        app_cmd = options.pop("APP_CMD")
+        for key, value in options.items():
+            new_env[key] = value
+        console_debug("rocprof sdk env vars: {}".format(new_env))
+        console_debug("rocprof sdk user provided command: {}".format(app_cmd))
         success, output = capture_subprocess_output(
-            [rocprof_cmd] + options, new_env=new_env, profileMode=True
+            app_cmd, new_env=new_env, profileMode=True
         )
     else:
-        success, output = capture_subprocess_output(
-            [rocprof_cmd] + options, profileMode=True
-        )
+        console_debug("rocprof command: {}".format([rocprof_cmd] + options))
+        # profile the app
+        if new_env:
+            success, output = capture_subprocess_output(
+                [rocprof_cmd] + options, new_env=new_env, profileMode=True
+            )
+        else:
+            success, output = capture_subprocess_output(
+                [rocprof_cmd] + options, profileMode=True
+            )
 
     time_2 = time.time()
     console_debug(
@@ -625,6 +704,9 @@ def run_prof(
         # rocprofv2 has separate csv files for each process
         results_files = glob.glob(workload_dir + "/out/pmc_1/results_*.csv")
 
+        if len(results_files) == 0:
+            return
+
         # Combine results into single CSV file
         combined_results = pd.concat(
             [pd.read_csv(f) for f in results_files], ignore_index=True
@@ -636,19 +718,22 @@ def run_prof(
         combined_results.to_csv(
             workload_dir + "/out/pmc_1/results_" + fbase + ".csv", index=False
         )
-    elif rocprof_cmd.endswith("v3"):
+    elif rocprof_cmd.endswith("v3") or rocprof_cmd == "rocprofiler-sdk":
         # rocprofv3 requires additional processing for each process
         results_files = process_rocprofv3_output(
             format_rocprof_output, workload_dir, is_timestamps
         )
-        # kokkos trace output processing for --kokkos-trace
-        # TODO: as rocprofv3 --kokkos-trace feature improves, rocprof-compute should make updates accordingly
-        if "--kokkos-trace" in options:
-            console_debug(
-                "[run_prof] --kokkos-trace detected, handling *_marker_api_trace.csv outputs."
-            )
-            process_kokkos_trace_output(workload_dir, fbase)
-        # TODO: add hip trace output processing
+
+        if rocprof_cmd == "rocprofiler-sdk":
+            # TODO: as rocprofv3 --kokkos-trace feature improves, rocprof-compute should make updates accordingly
+            if "ROCPROF_HIP_RUNTIME_API_TRACE" in options:
+                process_hip_trace_output(workload_dir, fbase)
+        else:
+            if "--kokkos-trace" in options:
+                # TODO: as rocprofv3 --kokkos-trace feature improves, rocprof-compute should make updates accordingly
+                process_kokkos_trace_output(workload_dir, fbase)
+            elif "--hip-trace" in options:
+                process_hip_trace_output(workload_dir, fbase)
 
         # Combine results into single CSV file
         if results_files:
@@ -671,7 +756,7 @@ def run_prof(
     if new_env and not using_v3() and not using_v1():
         # flatten tcc for applicable mi300 input
         f = path(workload_dir + "/out/pmc_1/results_" + fbase + ".csv")
-        xcds = get_num_xcds(mspec.gpu_model, mspec.compute_partition)
+        xcds = mi_gpu_specs.get_num_xcds(mspec.gpu_model, mspec.compute_partition)
         df = flatten_tcc_info_across_xcds(f, xcds, int(mspec._l2_banks))
         df.to_csv(f, index=False)
 
@@ -712,33 +797,66 @@ def run_prof(
     df.to_csv(workload_dir + "/" + fbase + ".csv", index=False)
 
 
-def pc_sampling_prof(interval, workload_dir, appcmd):
+def pc_sampling_prof(interval, workload_dir, appcmd, rocprofiler_sdk_library_path):
     """
     Run rocprof with pc sampling. Current support v3 only.
     """
     # Todo:
     #   - precheck with rocprofv3 –-list-avail
-    options = [
-        "--pc-sampling-beta-enable",
-        "--pc-sampling-method",
-        "host_trap",
-        "--pc-sampling-unit",
-        "time",
-        "--output-format",
-        "csv",
-        "json",
-        "--pc-sampling-interval",
-        str(interval),
-        "-d",
-        workload_dir,
-        "-o",
-        "ps_file",  # todo: sync up with the name from source in 2100_.yaml
-        "--",
-        appcmd,
-    ]
-    success, output = capture_subprocess_output(
-        [rocprof_cmd] + options, new_env=os.environ.copy(), profileMode=True
-    )
+    if rocprof_cmd == "rocprofiler-sdk":
+        rocm_libdir = str(pathlib.Path(rocprofiler_sdk_library_path).parent)
+        rocprofiler_sdk_tool_path = str(
+            pathlib.Path(rocm_libdir).joinpath(
+                "rocprofiler-sdk/librocprofiler-sdk-tool.so"
+            )
+        )
+        ld_preload = [
+            rocprofiler_sdk_tool_path,
+            rocprofiler_sdk_library_path,
+        ]
+        options = {
+            "ROCPROFILER_LIBRARY_CTOR": "1",
+            "LD_PRELOAD": ":".join(ld_preload),
+            "ROCP_TOOL_LIBRARIES": rocprofiler_sdk_tool_path,
+            "LD_LIBRARY_PATH": rocm_libdir,
+            "ROCPROF_OUTPUT_FORMAT": "csv,json",
+            "ROCPROF_OUTPUT_PATH": workload_dir,
+            "ROCPROF_OUTPUT_FILE_NAME": "ps_file",
+            "ROCPROFILER_PC_SAMPLING_BETA_ENABLED": "1",
+            "ROCPROF_PC_SAMPLING_UNIT": "time",
+            "ROCPROF_PC_SAMPLING_INTERVAL": str(interval),
+            "ROCPROF_PC_SAMPLING_METHOD": "host_trap",
+        }
+        new_env = os.environ.copy()
+        for key, value in options.items():
+            new_env[key] = value
+        console_debug("pc sampling rocprof sdk env vars: {}".format(new_env))
+        console_debug("pc sampling rocprof sdk user provided command: {}".format(appcmd))
+        success, output = capture_subprocess_output(
+            appcmd, new_env=new_env, profileMode=True
+        )
+    else:
+        options = [
+            "--pc-sampling-beta-enabled",
+            "--pc-sampling-method",
+            "host_trap",
+            "--pc-sampling-unit",
+            "time",
+            "--output-format",
+            "csv",
+            "json",
+            "--pc-sampling-interval",
+            str(interval),
+            "-d",
+            workload_dir,
+            "-o",
+            "ps_file",  # todo: sync up with the name from source in 2100_.yaml
+            "--",
+            appcmd,
+        ]
+        success, output = capture_subprocess_output(
+            [rocprof_cmd] + options, new_env=os.environ.copy(), profileMode=True
+        )
 
     if not success:
         console_error("PC sampling failed.")
@@ -802,7 +920,6 @@ def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
         else:
             # when the input is not for timestamps, and counter csv file is not generated, we assume failed rocprof run and will completely bypass the file generation and merging for current pmc
             results_files_csv = []
-            console_warning("No counter csv files generated, rocprofv3 run failed!!!")
 
     else:
         console_error("The output file of rocprofv3 can only support json or csv!!!")
@@ -810,6 +927,7 @@ def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
     return results_files_csv
 
 
+@demarcate
 def process_kokkos_trace_output(workload_dir, fbase):
     # marker api trace csv files are generated for each process
     marker_api_trace_csvs = glob.glob(
@@ -834,7 +952,34 @@ def process_kokkos_trace_output(workload_dir, fbase):
         )
 
 
+@demarcate
+def process_hip_trace_output(workload_dir, fbase):
+    # marker api trace csv files are generated for each process
+    hip_api_trace_csvs = glob.glob(workload_dir + "/out/pmc_1/*/*_hip_api_trace.csv")
+    existing_hip_files_csv = [d for d in hip_api_trace_csvs if path(d).is_file()]
+
+    # concate and output marker api trace info
+    combined_results = pd.concat(
+        [pd.read_csv(f) for f in existing_hip_files_csv], ignore_index=True
+    )
+
+    combined_results.to_csv(
+        workload_dir + "/out/pmc_1/results_" + fbase + "_hip_api_trace.csv",
+        index=False,
+    )
+
+    if path(workload_dir + "/out").exists():
+        shutil.copyfile(
+            workload_dir + "/out/pmc_1/results_" + fbase + "_hip_api_trace.csv",
+            workload_dir + "/" + fbase + "_hip_api_trace.csv",
+        )
+
+
 def replace_timestamps(workload_dir):
+
+    if not path(workload_dir, "timestamps.csv").is_file():
+        return
+
     df_stamps = pd.read_csv(workload_dir + "/timestamps.csv")
     if "Start_Timestamp" in df_stamps.columns and "End_Timestamp" in df_stamps.columns:
         # Update timestamps for all *.csv output files
@@ -909,14 +1054,14 @@ def detect_roofline(mspec):
     elif (
         (type(sles_distro) == str and len(sles_distro) >= 3)
         and sles_distro[:2] == "15"  # confirm string and len
-        and int(sles_distro[3]) >= 3  # SLES15 and SP >= 3
+        and int(sles_distro[3]) >= 6  # SLES15 and SP >= 6
     ):
         # Must be a valid SLES machine
-        # Use SP3 binary for all forward compatible service pack versions
-        distro = "15.3"
-    elif ubuntu_distro == "20.04" or ubuntu_distro == "22.04" or ubuntu_distro == "24.04":
+        # Use SP6 binary for all forward compatible service pack versions
+        distro = "15.6"
+    elif ubuntu_distro == "22.04" or ubuntu_distro == "24.04":
         # Must be a valid Ubuntu machine
-        distro = ubuntu_distro
+        distro = "22.04"
     else:
         console_error("roofline", "Cannot find a valid binary for your operating system")
 
@@ -954,10 +1099,8 @@ def mibench(args, mspec):
 
     distro_map = {
         "platform:el8": "rhel8",
-        "15.3": "sles15sp5",
-        "20.04": "ubuntu20_04",
-        "22.04": "ubuntu20_04",
-        "24.04": "ubuntu20_04",
+        "15.6": "sles15sp6",
+        "22.04": "ubuntu22_04",
     }
 
     binary_paths = []
@@ -978,8 +1121,6 @@ def mibench(args, mspec):
                 dir
                 + "-"
                 + distro_map[target_binary["distro"]]
-                + "-"
-                + mspec.gpu_series.lower()
                 + "-rocm"
                 + target_binary["rocm_ver"]
             )
@@ -1107,7 +1248,7 @@ def is_workload_empty(path):
             )
 
     else:
-        console_error("profiling", "Cannot find pmc_perf.csv in %s" % path)
+        console_error("analysis", "No profiling data found.")
 
 
 def print_status(msg):
