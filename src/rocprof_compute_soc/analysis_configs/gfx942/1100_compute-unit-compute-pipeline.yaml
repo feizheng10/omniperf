@@ -89,7 +89,7 @@ Panel Config:
             peak: ((($max_sclk * $cu_per_gpu) * 4096) / 1000)
             pop: ((100 * AVG(((SQ_INSTS_VALU_MFMA_MOPS_I8 * 512) / (End_Timestamp - Start_Timestamp))))
               / ((($max_sclk * $cu_per_gpu) * 4096) / 1000))
-            tips:
+            tips: All Peak FLOPS/clock/CU come from https://github.com/ROCm/amd_matrix_instruction_calculator/
 
     - metric_table:
         id: 1102
