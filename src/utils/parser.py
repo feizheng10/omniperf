@@ -1234,7 +1234,7 @@ def load_pc_sampling_data_per_kernel(
         )
     )
 
-    print(df[["source_line", "instruction", "offset", "count", "stall_reason"]])
+    # print(df[["source_line", "instruction", "offset", "count", "stall_reason"]])
 
     return (
         df[["source_line", "instruction", "offset", "count"]]
