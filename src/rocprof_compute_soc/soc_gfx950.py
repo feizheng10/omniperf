@@ -28,7 +28,7 @@ import config
 from rocprof_compute_soc.soc_base import OmniSoC_Base
 from roofline import Roofline
 from utils.logger import demarcate
-from utils.utils import console_error, console_log, mibench
+from utils.utils import console_error, console_log, console_warning, mibench
 
 
 class gfx950_soc(OmniSoC_Base):
@@ -46,7 +46,7 @@ class gfx950_soc(OmniSoC_Base):
                     )
                 )
             )
-        self.set_compatible_profilers(["rocprofv3"])
+        self.set_compatible_profilers(["rocprofv3", "rocprofiler-sdk"])
         # Per IP block max number of simultaneous counters. GFX IP Blocks
         self.set_perfmon_config(
             {
@@ -63,7 +63,9 @@ class gfx950_soc(OmniSoC_Base):
                 "TCC_channels": 16,
             }
         )
-        self.roofline_obj = Roofline(args, self._mspec)
+        # Create roofline object if mode is provided; skip for --specs
+        if hasattr(self.get_args(), "mode") and self.get_args().mode:
+            self.roofline_obj = Roofline(args, self._mspec)
 
         # Set arch specific specs
         self._mspec._l2_banks = 16
@@ -86,6 +88,12 @@ class gfx950_soc(OmniSoC_Base):
         super().post_profiling()
 
         if not self.get_args().no_roof:
+            pmc_path = str(Path(self.get_args().path).joinpath("pmc_perf.csv"))
+            if not Path(pmc_path).is_file():
+                console_warning(
+                    "Incomplete or missing profiling data. Skipping roofline."
+                )
+                return
             console_log(
                 "roofline", "Checking for roofline.csv in " + str(self.get_args().path)
             )

@@ -20,7 +20,7 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
   * Default is FP32, but user can specify as many types as desired to overlay on the same plot output
 
 * Additional datatypes for roofline profiling
-  * Now supports FP8, FP16, BF16, FP32, FP64, I8, I32, I64 (dependent on gpu architecture)
+  * Now supports FP4, FP6, FP8, FP16, BF16, FP32, FP64, I8, I32, I64 (dependent on gpu architecture)
 
 * Support host-trap PC Sampling on CLI (beta version)
 
@@ -46,6 +46,9 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
 * Roofline support for RHEL 10
 
 * Roofline support for MI350 series architecture
+
+* Setting ROCPROF=rocprofiler-sdk environment variable will use rocprofiler-sdk C++ library instead of rocprofv3 python script
+  * Add --rocprofiler-sdk-library-path runtime option to choose the path to rocprofiler-sdk library to be used
 
 ### Changed
 
