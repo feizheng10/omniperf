@@ -593,7 +593,7 @@ Examples:
         required=False,
         default=False,
         action="store_true",
-        help="\t\t\tMode of spatial multiplexing.",
+        help="\t\tMode of spatial multiplexing.",
     )
     analyze_group.add_argument(
         "-o",
