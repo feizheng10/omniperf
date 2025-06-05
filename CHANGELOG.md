@@ -6,6 +6,10 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
 
 ### Added
 
+* Add rocprof-compute Text User Interface (TUI) support for analyze mode
+  * A command line based user interface to support interactive single-run analysis
+  * launch with `--tui` option in analyze mode. i.e., `rocprof-compute analyze --tui`
+
 * Add support to be able to acquire from rocprofv3 every single channle on each XCD of TCC counters
 
 * Add Docker files to package the application and dependencies into a single portable and executable standalone binary file
@@ -60,12 +64,14 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
 * Update definition of following metrics for MI 350:
   * VGPR Writes
   * Total FLOPs (consider fp6 and fp4 ops)
+* Update Dash to >=3.0.0 (for web UI)
 
 ### Resolved issues
 
 * Fixed option specs-correction
 * Fixed kernel name and kernel dispatch filtering when using rocprof v3
 * Fixed not collecting TCC channel counters in rocprof v3
+* Fixed peak FLOPS of F8 I8 F16 and BF16 on MI300
 
 ### Known issues
 
