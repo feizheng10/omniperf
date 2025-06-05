@@ -32,6 +32,10 @@ Analysis options:
         --pc-sampling-sorting-type: offset or count (DEFAULT: offset).
         "offset" is assembly instruction offset in the code object.
 
+To associate PC sampling info back to HIP source code, users need to build the
+profiling target app with -g to keep the symbols. Otherwise, PC sampling info
+would be only associated with assembly lines.
+
 Note that PC sampling feature is BETA version at this moment. To enable PC sampling,
 users have to explicitly enable it with block index 21. Here is the example cmd:
 Profiling:
