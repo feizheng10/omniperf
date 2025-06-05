@@ -36,7 +36,7 @@ Note that PC sampling feature is BETA version at this moment. To enable PC sampl
 users have to explicitly enable it with block index 21. Here is the example cmd:
 Profiling:
 .. code-block:: bash
-rocprof-compute profile  -n pc_test -b 21 --no-roof --pc-sampling-method stochastic --pc-sampling-interval 1048576 -VVV -- target_app
+rocprof-compute profile -n pc_test -b 21 --no-roof --pc-sampling-method stochastic --pc-sampling-interval 1048576 -VVV -- target_app
 Analysis:
 .. code-block:: bash
-rocprof-compute analyze -p workloads/stochastic_test/MI300A_A1/ -b 21 -k 0 --pc-sampling-sorting-type offset
+rocprof-compute analyze -p workloads/pc_test/MI300A_A1/ -b 21 -k 0 --pc-sampling-sorting-type offset
