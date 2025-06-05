@@ -30,7 +30,7 @@ from pathlib import Path
 
 
 def print_avail_arch(avail_arch: list):
-    ret_str = "\t\t\tList all available metrics for analysis on specified arch:"
+    ret_str = "\t\tList all available metrics for analysis on specified arch:"
     for arch in avail_arch:
         ret_str += "\n\t\t\t   {}".format(arch)
     return ret_str
@@ -404,7 +404,7 @@ Examples:
         nargs="+",
         type=str,
         default=["FP32"],
-        help="Choose datatypes to view roofline PDFs for: (DEFAULT: FP32)\n\t\t\t   FP4\n\t\t\t FP6\n\t\t\t  FP8\n\t\t\t   FP16\n\t\t\t   BF16\n\t\t\t   FP32\n\t\t\t   FP64\n\t\t\t   I8\n\t\t\t  I32\n\t\t\t I64\n\t\t\t ",
+        help="\t\t\tChoose datatypes to view roofline PDFs for: (DEFAULT: FP32)\n\t\t\t   FP4\n\t\t\t   FP6\n\t\t\t   FP8\n\t\t\t   FP16\n\t\t\t   BF16\n\t\t\t   FP32\n\t\t\t   FP64\n\t\t\t   I8\n\t\t\t   I32\n\t\t\t   I64\n\t\t\t ",
     )
 
     # roofline_group.add_argument('-w', '--workgroups', required=False, default=-1, type=int, help="\t\t\tNumber of kernel workgroups (DEFAULT: 1024)")
