@@ -623,7 +623,17 @@ Examples:
         nargs="+",
         type=str,
         default=["FP32"],
-        help="\t\t\tChoose datatypes to view roofline PDFs for: (DEFAULT: FP32)\n\t\t\t   FP4\n\t\t\t   FP6\n\t\t\t FP8\n\t\t\t   FP16\n\t\t\t   BF16\n\t\t\t   FP32\n\t\t\t   FP64\n\t\t\t   I8\n\t\t\t  I32\n\t\t\t I64\n\t\t\t ",
+        help="\t\tChoose datatypes to view roofline PDFs for: (DEFAULT: FP32)\n\t\t\t   FP4\n\t\t\t   FP6\n\t\t\t   FP8\n\t\t\t   FP16\n\t\t\t   BF16\n\t\t\t   FP32\n\t\t\t   FP64\n\t\t\t   I8\n\t\t\t   I32\n\t\t\t   I64\n\t\t\t ",
+    )
+
+    analyze_group.add_argument(
+        "--pc-sampling-sorting-type",
+        required=False,
+        metavar="",
+        dest="pc_sampling_sorting_type",
+        default="offset",
+        type=str,
+        help="\t\tSet the sorting type of pc sampling: offset or count (DEFAULT: offset).",
     )
 
     analyze_advanced_group.add_argument(

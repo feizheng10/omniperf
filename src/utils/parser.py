@@ -1134,7 +1134,7 @@ def search_pc_sampling_record(records):
 
 @demarcate
 def load_pc_sampling_data_per_kernel(
-    method: str, file_name: Path, kernel_name: str
+    method: str, file_name: Path, kernel_name: str, sorting_type: str
 ) -> pd.DataFrame:
     """
     Load PC sampling raw data from json file with given method and kernel name,
@@ -1147,6 +1147,8 @@ def load_pc_sampling_data_per_kernel(
     :type file_name: Path
     :param kernel_name: The kernel name to be filtered out.
     :type kernel_name: str
+    :param sorting_type: "offset" or "count".
+    :type sorting_type: str
     :return: The counted and reordering pc sampling info.
     :rtype: pd.DataFrame:
     """
@@ -1236,15 +1238,27 @@ def load_pc_sampling_data_per_kernel(
 
     # print(df[["source_line", "instruction", "offset", "count", "stall_reason"]])
 
-    return (
-        df[["source_line", "instruction", "offset", "count"]]
-        if method == "host_trap"
-        else df[["source_line", "instruction", "offset", "count", "stall_reason"]]
-    )
+    if sorting_type == "offset":
+        return (
+            df[["source_line", "instruction", "offset", "count"]]
+            if method == "host_trap"
+            else df[["source_line", "instruction", "offset", "count", "stall_reason"]]
+        )
+    else:  # sort by "count"
+        return (
+            df[["source_line", "instruction", "offset", "count"]].sort_values(
+                by="count", ascending=False
+            )
+            if method == "host_trap"
+            else df[
+                ["source_line", "instruction", "offset", "count", "stall_reason"]
+            ].sort_values(by="count", ascending=False)
+        )
+    # might support sort by stall reason in the future
 
 
 @demarcate
-def load_pc_sampling_data(workload, dir, file_prefix):
+def load_pc_sampling_data(workload, dir, file_prefix, sorting_type):
     """
     Load PC sampling raw data, filter and sort it by specified conditions,
     then return df.
@@ -1322,7 +1336,7 @@ def load_pc_sampling_data(workload, dir, file_prefix):
                 workload.filter_kernel_ids[0], "Kernel_Name"
             ]
             return load_pc_sampling_data_per_kernel(
-                pc_sampling_method, json_file_path, kernel_name
+                pc_sampling_method, json_file_path, kernel_name, sorting_type
             )
     else:
         console_warning("PC sampling: No data")
@@ -1373,7 +1387,12 @@ def load_kernel_top(workload, dir, args):
                     f"Couldn't load {file.name}. This may result in missing analysis data."
                 )
         elif "from_pc_sampling" in df.columns:
-            tmp[id] = load_pc_sampling_data(workload, dir, df.loc[0, "from_pc_sampling"])
+            tmp[id] = load_pc_sampling_data(
+                workload,
+                dir,
+                df.loc[0, "from_pc_sampling"],
+                args.pc_sampling_sorting_type,
+            )
             # print("table id", id, "filter_kernel_ids", workload.filter_kernel_ids)
 
     workload.dfs.update(tmp)
