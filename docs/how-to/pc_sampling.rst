@@ -11,8 +11,10 @@ technique to periodically sample the program counter during GPU kernel
 execution. PC sampling helps in understanding code execution patterns
 and identifying hotspot(s).
 
-ROCm Compute Profiler supports Host Trap PC sampling (>=MI200) and
-Stochastic (Hardware-Based) PC Sampling (>=MI300). Stochastic PC sampling
+ROCm Compute Profiler supports Host Trap PC sampling and Stochastic (Hardware-Based) PC Sampling.
+Host Trap PC sampling has been enabled for MD Instinct MI200 series and later
+accelerators. Stochastic (hardware-based) PC sampling has been enabled for
+AMD Instinct MI300 series and later accelerators. Stochastic PC sampling
 delivers additional information that tells whether a sampled wave issued an
 instruction represented with particular PC. If not, it provides the reason
 for not issuing the instruction (stall reason). This type of information is
