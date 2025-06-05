@@ -24,7 +24,7 @@ Profiling options:
         For stochastic sampling, the interval is in cycles.
         The finest granularity is 1 cycle.
 
-        For host_tracp sampling, the interval is in microsecond (DEFAULT: 1048576).
+        For host_trap sampling, the interval is in microsecond (DEFAULT: 1048576).
         The interval should be power of 2. Recommend to try to start from 1048576,
         and try decreasing until 65536.
 
