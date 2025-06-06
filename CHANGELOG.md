@@ -6,9 +6,9 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
 
 ### Added
 
-* Enable stochastic (hardware based) PC sampling >= MI300
+* Stochastic (hardware-based) PC sampling has been enabled for AMD Instinct MI300X series and later accelerators.
 
-* Support PC sampling sorting by type: offset or count
+* Sorting of PC sampling by type: offset or count.
 
 * Add rocprof-compute Text User Interface (TUI) support for analyze mode
   * A command line based user interface to support interactive single-run analysis
