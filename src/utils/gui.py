@@ -120,7 +120,7 @@ def discrete_background_color_bins(df, n_bins=5, columns="all"):
 ####################
 # GRAPHICAL ELEMENTS
 ####################
-def build_bar_chart(display_df, table_config, barchart_elements, norm_filt, hbm_bw):
+def build_bar_chart(display_df, table_config, barchart_elements, norm_filt):
     """
     Read data into a bar chart. ID will determine which subtype of barchart.
     """
@@ -131,7 +131,7 @@ def build_bar_chart(display_df, table_config, barchart_elements, norm_filt, hbm_
         display_df["Avg"] = [
             x.astype(int) if x != "" else int(0) for x in display_df["Avg"]
         ]
-        df_unit = display_df["Unit"][0]
+        df_unit = display_df["Unit"].iloc[0]
         d_figs.append(
             px.bar(
                 display_df,
@@ -149,7 +149,7 @@ def build_bar_chart(display_df, table_config, barchart_elements, norm_filt, hbm_
         display_df["Avg"] = [
             x.astype(int) if x != "" else int(0) for x in display_df["Avg"]
         ]
-        df_unit = display_df["Unit"][0]
+        df_unit = display_df["Unit"].iloc[0]
         nested_bar = multi_bar_chart(table_config["id"], display_df)
         # generate chart for each coherency
         for group, metric in nested_bar.items():
@@ -214,6 +214,9 @@ def build_bar_chart(display_df, table_config, barchart_elements, norm_filt, hbm_
                     orientation="h",
                 ).update_xaxes(range=[0, 110], ticks="inside", title="%")
             )  # append first % chart
+            hbm_bw = float(
+                display_df[display_df["Metric"] == "HBM Bandwidth"]["Avg"].iloc[0]
+            )
             d_figs.append(
                 px.bar(
                     display_df[display_df["Unit"] == "Gb/s"],

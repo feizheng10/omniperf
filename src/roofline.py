@@ -60,7 +60,6 @@ class Roofline:
                 "mem_level": "ALL",
                 "include_kernel_names": False,
                 "is_standalone": False,
-                "roofline_data_type": ["FP32"],
             }
         )
         self.__ai_data = None
@@ -77,10 +76,7 @@ class Roofline:
             self.__run_parameters["mem_level"] = self.__args.mem_level
         if hasattr(self.__args, "sort") and self.__args.sort != "ALL":
             self.__run_parameters["sort_type"] = self.__args.sort
-        if hasattr(
-            self.__args, "roofline_data_type"
-        ) and self.__args.roofline_data_type != ["FP32"]:
-            self.__run_parameters["roofline_data_type"] = self.__args.roofline_data_type
+        self.__run_parameters["roofline_data_type"] = self.__args.roofline_data_type
         self.validate_parameters()
 
     def validate_parameters(self):
@@ -302,7 +298,7 @@ class Roofline:
                             None
                             if self.__run_parameters["is_standalone"]
                             else "{} G{}/s".format(
-                                to_int(self.__ceiling_data["valu"][2], ops_flops)
+                                to_int(self.__ceiling_data["valu"][2]), ops_flops
                             )
                         ),
                         "{} G{}/s".format(
@@ -341,48 +337,69 @@ class Roofline:
         # Plot Application AI
         #######################
         # Plot the arithmetic intensity points for each cache level
-        if ops_flops == "FLOP":
-            fig.add_trace(
-                go.Scatter(
-                    x=self.__ai_data["ai_l1"][0],
-                    y=self.__ai_data["ai_l1"][1],
-                    name=dtype + "_ai_l1",
-                    mode="markers",
-                    marker_symbol=(
-                        SYMBOLS if self.__run_parameters["include_kernel_names"] else None
-                    ),
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=self.__ai_data["ai_l2"][0],
-                    y=self.__ai_data["ai_l2"][1],
-                    name=dtype + "_ai_l2",
-                    mode="markers",
-                    marker_symbol=(
-                        SYMBOLS if self.__run_parameters["include_kernel_names"] else None
-                    ),
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=self.__ai_data["ai_hbm"][0],
-                    y=self.__ai_data["ai_hbm"][1],
-                    name=dtype + "_ai_hbm",
-                    mode="markers",
-                    marker_symbol=(
-                        SYMBOLS if self.__run_parameters["include_kernel_names"] else None
-                    ),
-                )
-            )
 
-            # Set layout
-            fig.update_layout(
-                xaxis_title="Arithmetic Intensity (FLOPs/Byte)",
-                yaxis_title="Performance (GFLOP/sec)",
-                hovermode="x unified",
-                margin=dict(l=50, r=50, b=50, t=50, pad=4),
+        # Check for F6F4 PC which applies to both FP4 and FP6 MFMA; avoid duplicate plotting
+        skipAI = False
+        if dtype == "FP4" or dtype == "FP6":
+            if (dtype == "FP6") and (
+                "FP4" in self.__run_parameters["roofline_data_type"]
+            ):
+                skipAI = True
+            console_debug(
+                "roofline",
+                "Datatype {} is captured through the F6F4 perfmon event".format(dtype),
             )
+            dtype = "F6F4"
+
+        if ops_flops == "FLOP":
+            if not skipAI:
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.__ai_data["ai_l1"][0],
+                        y=self.__ai_data["ai_l1"][1],
+                        name=dtype + "_ai_l1",
+                        mode="markers",
+                        marker_symbol=(
+                            SYMBOLS
+                            if self.__run_parameters["include_kernel_names"]
+                            else None
+                        ),
+                    )
+                )
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.__ai_data["ai_l2"][0],
+                        y=self.__ai_data["ai_l2"][1],
+                        name=dtype + "_ai_l2",
+                        mode="markers",
+                        marker_symbol=(
+                            SYMBOLS
+                            if self.__run_parameters["include_kernel_names"]
+                            else None
+                        ),
+                    )
+                )
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.__ai_data["ai_hbm"][0],
+                        y=self.__ai_data["ai_hbm"][1],
+                        name=dtype + "_ai_hbm",
+                        mode="markers",
+                        marker_symbol=(
+                            SYMBOLS
+                            if self.__run_parameters["include_kernel_names"]
+                            else None
+                        ),
+                    )
+                )
+
+                # Set layout
+                fig.update_layout(
+                    xaxis_title="Arithmetic Intensity (FLOPs/Byte)",
+                    yaxis_title="Performance (GFLOP/sec)",
+                    hovermode="x unified",
+                    margin=dict(l=50, r=50, b=50, t=50, pad=4),
+                )
         else:
             # Set layout
             fig.update_layout(

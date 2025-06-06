@@ -27,37 +27,23 @@ from pathlib import Path
 import config
 from rocprof_compute_soc.soc_base import OmniSoC_Base
 from utils.logger import console_error, demarcate
+from utils.mi_gpu_spec import mi_gpu_specs
 
 
 class gfx908_soc(OmniSoC_Base):
     def __init__(self, args, mspec):
         super().__init__(args, mspec)
         self.set_arch("gfx908")
-        self.set_compatible_profilers(["rocprofv1", "rocscope", "rocprofv3"])
-        # Per IP block max number of simultaneous counters. GFX IP Blocks
-        self.set_perfmon_config(
-            {
-                "SQ": 8,
-                "TA": 2,
-                "TD": 2,
-                "TCP": 4,
-                "TCC": 4,
-                "CPC": 2,
-                "CPF": 2,
-                "SPI": 2,
-                "GRBM": 2,
-                "GDS": 4,
-            }
+        self.set_compatible_profilers(
+            ["rocprofv1", "rocscope", "rocprofv3", "rocprofiler-sdk"]
         )
+        # Per IP block max number of simultaneous counters. GFX IP Blocks
+        self.set_perfmon_config(mi_gpu_specs.get_perfmon_config("gfx908"))
 
         # Set arch specific specs
         self._mspec._l2_banks = 32
         self._mspec.lds_banks_per_cu = 32
         self._mspec.pipes_per_gpu = 4
-        # --showmclkrange is broken in Mi100, hardcode freq
-        if self._mspec.max_mclk is None or self._mspec.cur_mclk is None:
-            self._mspec.max_mclk = 1200
-            self._mspec.cur_mclk = 1200
 
     # -----------------------
     # Required child methods

@@ -22,6 +22,7 @@
 # SOFTWARE.
 ##############################################################################el
 
+import ctypes
 import glob
 import math
 import os
@@ -42,15 +43,19 @@ from utils.logger import (
     console_warning,
     demarcate,
 )
-from utils.mi_gpu_spec import get_gpu_model, get_gpu_series
+from utils.mi_gpu_spec import mi_gpu_specs
 from utils.parser import build_in_vars, supported_denom
 from utils.utils import (
+    add_counter_extra_config_input_yaml,
+    add_counter_from_source_to_target_extra_config_input_yaml,
     capture_subprocess_output,
     convert_metric_id_to_panel_idx,
     detect_rocprof,
+    get_base_spi_pipe_counter,
     get_submodules,
+    is_counter_existed_in_extra_input_yaml,
+    is_spi_pipe_counter,
     is_tcc_channel_counter,
-    total_xcds,
     using_v3,
 )
 
@@ -103,7 +108,6 @@ class OmniSoC_Base:
     def get_compatible_profilers(self):
         return self.__compatible_profilers
 
-    @demarcate
     def populate_mspec(self):
         from utils.specs import run, search, total_sqc
 
@@ -180,14 +184,77 @@ class OmniSoC_Base:
         self._mspec.cur_sclk = self._mspec.max_sclk
         self._mspec.cur_mclk = self._mspec.max_mclk
 
-        self._mspec.gpu_series = get_gpu_series(self._mspec.gpu_arch).upper()
+        self._mspec.gpu_series = mi_gpu_specs.get_gpu_series(self._mspec.gpu_arch)
         # specify gpu model name for gfx942 hardware
-        self._mspec.gpu_model = get_gpu_model(
+        self._mspec.gpu_model = mi_gpu_specs.get_gpu_model(
             self._mspec.gpu_arch, self._mspec.gpu_chip_id
-        ).upper()
-        self._mspec.num_xcd = str(
-            total_xcds(self._mspec.gpu_model, self._mspec.compute_partition)
         )
+
+        if not self._mspec.gpu_model:
+            self._mspec.gpu_model = self.detect_gpu_model(self._mspec.gpu_arch)
+
+        self._mspec.num_xcd = str(
+            mi_gpu_specs.get_num_xcds(
+                self._mspec.gpu_arch, self._mspec.gpu_model, self._mspec.compute_partition
+            )
+        )
+
+    @demarcate
+    def detect_gpu_model(self, gpu_arch):
+        """
+        Detects the GPU model using various identifiers from 'amd-smi static'.
+        Falls back through multiple methods if the primary method fails.
+        """
+
+        from utils.specs import run, search
+
+        # TODO: use amd-smi python api when available
+        amd_smi_static = run(["amd-smi", "static", "--gpu=0"], exit_on_error=True)
+
+        # Purposely search for patterns without variants suffix to try and match a known GPU model.
+        detection_methods = [
+            {
+                "name": "Market Name",
+                "pattern": r"MARKET_NAME:\s*.*(mi|MI\d*[a-zA-Z]*)",
+            },
+            {
+                "name": "VBIOS Name",
+                "pattern": r"NAME:\s*.*(mi|MI\d*[a-zA-Z]*)",
+            },
+            {"name": "Product Name", "pattern": r"PRODUCT_NAME:\s*.*(mi|MI\d*[a-zA-Z]*)"},
+        ]
+
+        gpu_model = None
+        for method in detection_methods:
+            console_log(f"Determining GPU model using {method['name']}.")
+            gpu_model = search(method["pattern"], amd_smi_static)
+            if gpu_model:
+                break
+
+        if not gpu_model:
+            console_warning("Unable to determine the GPU model.")
+            return
+
+        gpu_model = self._adjust_mi300_model(gpu_model.lower(), gpu_arch.lower())
+
+        if gpu_model.lower() not in mi_gpu_specs.get_num_xcds_dict().keys():
+            console_warning(f"Unknown GPU model detected: '{gpu_model}'.")
+            return
+
+        return gpu_model.upper()
+
+    def _adjust_mi300_model(self, gpu_model, gpu_arch):
+        """
+        Applies specific adjustments for MI300 series GPU models based on architecture.
+        """
+
+        if gpu_model in ["mi300a", "mi300x"]:
+            if gpu_arch in ["gfx940", "gfx941"]:
+                gpu_model += "_a0"
+            elif gpu_arch == "gfx942":
+                gpu_model += "_a1"
+
+        return gpu_model
 
     @demarcate
     def detect_counters(self):
@@ -242,14 +309,14 @@ class OmniSoC_Base:
                 section_config_text = "\n".join(
                     [
                         # Convert yaml to string
-                        yaml.dump(subsection)
+                        yaml.dump(subsection, sort_keys=False)
                         for subsection in section_config["Panel Config"]["data source"]
                         if subsection["metric_table"]["id"] in subsections
                     ]
                 )
             else:
                 # Convert yaml to string
-                section_config_text = yaml.dump(section_config)
+                section_config_text = yaml.dump(section_config, sort_keys=False)
             counters = counters.union(self.parse_counters(section_config_text))
 
         # Handle TCC channel counters: if hw_counter_matches has elements ending with '['
@@ -316,10 +383,10 @@ class OmniSoC_Base:
             counters = counters - {"SQ_INSTS_VALU_MFMA_F8", "SQ_INSTS_VALU_MFMA_MOPS_F8"}
 
         # Following counters are not supported
-        # TCP_TCP_LATENCY_sum (except for gfx908 and gfx90a)
+        # TCP_TCP_LATENCY_sum (except for gfx950)
         # SQC_DCACHE_INFLIGHT_LEVEL
         counters = counters - {"SQC_DCACHE_INFLIGHT_LEVEL"}
-        if self.__arch not in ("gfx908", "gfx90a"):
+        if self.__arch != "gfx950":
             counters = counters - {"TCP_TCP_LATENCY_sum"}
 
         # SQ_ACCUM_PREV_HIRES will be injected for level counters later on
@@ -375,8 +442,8 @@ class OmniSoC_Base:
         return hw_counter_matches, variable_matches
 
     def get_rocprof_supported_counters(self):
-        rocprof_cmd = detect_rocprof()
-        rorcprof_counters = set()
+        rocprof_cmd = detect_rocprof(self.get_args())
+        rocprof_counters = set()
 
         if str(rocprof_cmd).endswith("rocprof"):
             command = [rocprof_cmd, "--list-basic"]
@@ -389,7 +456,7 @@ class OmniSoC_Base:
             for line in output.splitlines():
                 if "gpu-agent" in line:
                     counters, _ = self.parse_counters_text(line.split(":")[1].strip())
-                    rorcprof_counters.update(counters)
+                    rocprof_counters.update(counters)
 
             command = [rocprof_cmd, "--list-derived"]
             success, output = capture_subprocess_output(command, enable_logging=False)
@@ -401,7 +468,7 @@ class OmniSoC_Base:
             for line in output.splitlines():
                 if "gpu-agent" in line:
                     counters, _ = self.parse_counters_text(line.split(":")[1].strip())
-                    rorcprof_counters.update(counters)
+                    rocprof_counters.update(counters)
 
         elif str(rocprof_cmd).endswith("rocprofv2"):
             command = [rocprof_cmd, "--list-counters"]
@@ -414,7 +481,7 @@ class OmniSoC_Base:
             for line in output.splitlines():
                 if "gfx" in line:
                     counters, _ = self.parse_counters_text(line.split(":")[2].strip())
-                    rorcprof_counters.update(counters)
+                    rocprof_counters.update(counters)
 
         elif str(rocprof_cmd).endswith("rocprofv3"):
             command = [rocprof_cmd, "--list-avail"]
@@ -427,7 +494,68 @@ class OmniSoC_Base:
             for line in output.splitlines():
                 if "Name:" in line:
                     counters, _ = self.parse_counters_text(line.split(":")[1].strip())
-                    rorcprof_counters.update(counters)
+                    rocprof_counters.update(counters)
+
+        elif str(rocprof_cmd) == "rocprofiler-sdk":
+            MAX_STR = 256
+
+            # rocprofiler sdk list avail library
+            libname = str(
+                Path(self.get_args().rocprofiler_sdk_library_path).parent.parent.joinpath(
+                    "libexec/rocprofiler-sdk/librocprofv3-list-avail.so"
+                )
+            )
+            c_lib = ctypes.CDLL(libname)
+            if c_lib is None:
+                console_error(f"Error opening {libname}")
+
+            # Intialize the library and set data types for arguments and variables
+            c_lib.avail_tool_init()
+            c_lib.get_number_of_agents.restype = ctypes.c_size_t
+            c_lib.get_agent_node_id.restype = ctypes.c_ulong
+            c_lib.get_agent_node_id.argtypes = [ctypes.c_int]
+            c_lib.get_number_of_counters.restype = ctypes.c_ulong
+            c_lib.get_number_of_counters.argtypes = [ctypes.c_int]
+            c_lib.get_counters_info.argtypes = [
+                ctypes.c_ulong,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_ulong),
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_char * MAX_STR)),
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_char * MAX_STR)),
+                ctypes.POINTER(ctypes.c_int),
+            ]
+            c_lib.get_counter_block.argtypes = [
+                ctypes.c_ulong,
+                ctypes.c_ulong,
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_char * MAX_STR)),
+            ]
+
+            # Iterate through each counter index and get its information
+            for idx in range(c_lib.get_number_of_agents()):
+                node_id = c_lib.get_agent_node_id(idx)
+                for counter_idx in range(c_lib.get_number_of_counters(node_id)):
+                    # Counter information will be stored in these variables
+                    name_args = ctypes.POINTER(ctypes.c_char * MAX_STR)()
+                    description_args = ctypes.POINTER(ctypes.c_char * MAX_STR)()
+                    is_derived_args = ctypes.c_int()
+                    counter_id_args = ctypes.c_ulong()
+                    block_args = ctypes.POINTER(ctypes.c_char * MAX_STR)()
+                    # Get the counter information
+                    c_lib.get_counters_info(
+                        node_id,
+                        counter_idx,
+                        ctypes.byref(counter_id_args),
+                        name_args,
+                        description_args,
+                        ctypes.byref(is_derived_args),
+                    )
+                    c_lib.get_counter_block(node_id, counter_idx, block_args)
+                    block = ctypes.cast(block_args, ctypes.c_char_p).value.decode("utf-8")
+                    if not is_derived_args.value and block:
+                        # Only consider raw hardware counters from IP blocks
+                        rocprof_counters.add(
+                            ctypes.cast(name_args, ctypes.c_char_p).value.decode("utf-8")
+                        )
 
         else:
             console_error(
@@ -435,7 +563,7 @@ class OmniSoC_Base:
                 % (rocprof_cmd, get_submodules("rocprof_compute_profile"))
             )
 
-        return rorcprof_counters
+        return rocprof_counters
 
     @demarcate
     def perfmon_coalesce(self, counters):
@@ -510,10 +638,20 @@ class OmniSoC_Base:
         file_count = 0
         # Store all channels for a TCC channel counter in the same file
         tcc_channel_counter_file_map = dict()
+        # Store all pipes for SPI pipe counters in the same file
+        spi_pipe_counter_file_map = dict()
         for ctr in counters:
             # Store all channels for a TCC channel counter in the same file
             if is_tcc_channel_counter(ctr):
                 output_file = tcc_channel_counter_file_map.get(ctr.split("[")[0])
+                if output_file:
+                    output_file.add(ctr)
+                    continue
+            # Store all pipes for SPI pipe counters in the same file
+            if is_spi_pipe_counter(ctr):
+                output_file = spi_pipe_counter_file_map.get(
+                    get_base_spi_pipe_counter(ctr)
+                )
                 if output_file:
                     output_file.add(ctr)
                     continue
@@ -522,8 +660,14 @@ class OmniSoC_Base:
             for i in range(len(output_files)):
                 if output_files[i].add(ctr):
                     added = True
+                    # Store all channels for a TCC channel counter in the same file
                     if is_tcc_channel_counter(ctr):
                         tcc_channel_counter_file_map[ctr.split("[")[0]] = output_files[i]
+                    # Store all pipes for SPI pipe counters in the same file
+                    if is_spi_pipe_counter(ctr):
+                        spi_pipe_counter_file_map[get_base_spi_pipe_counter(ctr)] = (
+                            output_files[i]
+                        )
                     break
 
             # All files are full, create a new file
@@ -633,25 +777,30 @@ class OmniSoC_Base:
                 ]:
                     pmc.append(ctr)
                     if using_v3():
-                        if ctr in accum_counters_def:
-                            counter_def[ctr] = accum_counters_def[ctr]
+                        if is_counter_existed_in_extra_input_yaml(
+                            accum_counters_def, ctr
+                        ) and not is_counter_existed_in_extra_input_yaml(
+                            counter_def, ctr
+                        ):
+                            counter_def = (
+                                add_counter_from_source_to_target_extra_config_input_yaml(
+                                    accum_counters_def, counter_def, ctr
+                                )
+                            )
                         # Add TCC channel counters definitions
                         if is_tcc_channel_counter(ctr):
                             counter_name = ctr.split("[")[0]
                             idx = int(ctr.split("[")[1].split("]")[0])
                             xcd_idx = idx // int(self._mspec._l2_banks)
                             channel_idx = idx % int(self._mspec._l2_banks)
-                            counter_def.update(
-                                {
-                                    ctr: {
-                                        "architectures": {
-                                            self.__arch: {
-                                                "expression": f"select({counter_name},[DIMENSION_XCC=[{xcd_idx}], DIMENSION_INSTANCE=[{channel_idx}]])",
-                                            }
-                                        },
-                                        "description": f"{counter_name} on {xcd_idx}th XCC and {channel_idx}th channel",
-                                    }
-                                }
+                            expression = f"select({counter_name},[DIMENSION_XCC=[{xcd_idx}], DIMENSION_INSTANCE=[{channel_idx}]])"
+                            discription = f"{counter_name} on {xcd_idx}th XCC and {channel_idx}th channel"
+                            counter_def = add_counter_extra_config_input_yaml(
+                                counter_def,
+                                ctr,
+                                discription,
+                                expression,
+                                [self.__arch],
                             )
 
                 stext = "pmc: " + " ".join(pmc)
@@ -667,7 +816,7 @@ class OmniSoC_Base:
                 if using_v3():
                     with open(file_name_yaml, "w") as fp:
                         if counter_def:
-                            fp.write(yaml.dump(counter_def))
+                            fp.write(yaml.dump(counter_def, sort_keys=False))
 
         # Add a timestamp file
         # TODO: Does v3 need this?
@@ -711,8 +860,18 @@ class LimitedSet:
         if e.split("[")[0] in {element.split("[")[0] for element in self.elements}:
             self.elements.append(e)
             return True
+        # Store all pipes for SPI pipe counters in the same file
+        if is_spi_pipe_counter(e) and get_base_spi_pipe_counter(e) in {
+            get_base_spi_pipe_counter(element) for element in self.elements
+        }:
+            self.elements.append(e)
+            return True
         if self.avail > 0:
-            self.avail -= 1
+            # SPI pipe counters take space of 2 counters
+            if is_spi_pipe_counter(e):
+                self.avail -= 2
+            else:
+                self.avail -= 1
             self.elements.append(e)
             return True
         return False

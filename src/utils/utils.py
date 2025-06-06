@@ -42,15 +42,187 @@ from pathlib import Path as path
 import pandas as pd
 
 import config
-from utils.logger import console_debug, console_error, console_log, console_warning
-from utils.mi_gpu_spec import get_mi300_num_xcds
+from utils.logger import (
+    console_debug,
+    console_error,
+    console_log,
+    console_warning,
+    demarcate,
+)
+from utils.mi_gpu_spec import mi_gpu_specs
 
 rocprof_cmd = ""
 rocprof_args = ""
+spi_pipe_counter_regexs = [r"SPI_CS\d+_(.*)", r"SPI_CSQ_P\d+_(.*)"]
 
 
 def is_tcc_channel_counter(counter):
     return counter.startswith("TCC") and counter.endswith("]")
+
+
+def is_counter_existed_in_extra_input_yaml(data: dict, counter_name: str) -> bool:
+    """
+    Check if a counter with the given name exists in the rocprofiler-sdk counters.
+
+    Args:
+        data (dict): The loaded YAML dictionary.
+        counter_name (str): The name of the counter to check.
+
+    Returns:
+        bool: True if the counter exists, False otherwise.
+    """
+    counters = data.get("rocprofiler-sdk", {}).get("counters", [])
+    return any(counter.get("name") == counter_name for counter in counters)
+
+
+def add_counter_extra_config_input_yaml(
+    data: dict,
+    counter_name: str,
+    description: str,
+    expression: str,
+    architectures: list,
+    properties: list = None,
+) -> dict:
+    """
+    Add a new counter to the rocprofiler-sdk dictionary.
+    Initialize missing parts if data is empty or incomplete.
+    Enforces that 'architectures' and 'properties' are lists for correct YAML list serialization.
+    Overwrites the counter if it already exists.
+
+    Args:
+        data (dict): The loaded YAML dictionary (can be empty).
+        counter_name (str): The name of the new counter.
+        description (str): Description of the new counter.
+        architectures (list): List of architectures for the definitions.
+        expression (str): Expression string for the counter.
+        properties (list, optional): Optional list of properties, default to empty list.
+
+    Returns:
+        dict: Updated YAML dictionary.
+    """
+    if properties is None:
+        properties = []
+
+    # Enforce type checks for YAML list serialization
+    if not isinstance(architectures, list):
+        raise TypeError(
+            f"'architectures' must be a list, got {type(architectures).__name__}"
+        )
+    if not isinstance(properties, list):
+        raise TypeError(f"'properties' must be a list, got {type(properties).__name__}")
+
+    # Initialize the top-level 'rocprofiler-sdk' dict if missing
+    if "rocprofiler-sdk" not in data or not isinstance(data["rocprofiler-sdk"], dict):
+        data["rocprofiler-sdk"] = {}
+
+    sdk = data["rocprofiler-sdk"]
+
+    # Initialize schema version if missing
+    if "counters-schema-version" not in sdk:
+        sdk["counters-schema-version"] = 1
+
+    # Initialize counters list if missing or not a list
+    if "counters" not in sdk or not isinstance(sdk["counters"], list):
+        sdk["counters"] = []
+
+    # Build the new counter dictionary
+    new_counter = {
+        "name": counter_name,
+        "description": description,
+        "properties": properties,
+        "definitions": [
+            {
+                "architectures": architectures,
+                "expression": expression,
+            }
+        ],
+    }
+
+    # Check if the counter already exists and overwrite if found
+    for idx, counter in enumerate(sdk["counters"]):
+        if counter.get("name") == counter_name:
+            sdk["counters"][idx] = new_counter
+            break
+    else:
+        # Not found, append new counter
+        sdk["counters"].append(new_counter)
+
+    return data
+
+
+def extract_counter_info_extra_config_input_yaml(
+    data: dict, counter_name: str
+) -> dict | None:
+    """
+    Extract the full counter dictionary from 'data' for the given counter_name.
+
+    Args:
+        data (dict): The source YAML dict.
+        counter_name (str): The counter to find.
+
+    Returns:
+        dict | None: The full counter dict if found, else None.
+    """
+    counters = data.get("rocprofiler-sdk", {}).get("counters", [])
+    for counter in counters:
+        if counter.get("name") == counter_name:
+            return counter
+    return None
+
+
+def add_counter_from_source_to_target_extra_config_input_yaml(
+    source_data: dict, target_data: dict, counter_name: str
+) -> dict:
+    """
+    Check if counter_name exists in source_data, and if yes, add it to target_data.
+
+    Args:
+        source_data (dict): Source YAML dictionary to extract from.
+        target_data (dict): Target YAML dictionary to add to.
+        counter_name (str): Name of the counter to copy.
+
+    Returns:
+        dict: Updated target_data dictionary.
+    """
+    counter = extract_counter_info_extra_config_input_yaml(source_data, counter_name)
+    if not counter:
+        raise ValueError(f"Counter '{counter_name}' not found in source data")
+
+    # Extract required info
+    name = counter.get("name")
+    description = counter.get("description", "")
+    properties = counter.get("properties", [])
+    definitions = counter.get("definitions", [])
+
+    if not definitions:
+        raise ValueError(f"Counter '{counter_name}' has no definitions")
+
+    architectures = definitions[0].get("architectures", [])
+    expression = definitions[0].get("expression", "")
+
+    return add_counter_extra_config_input_yaml(
+        target_data,
+        counter_name=name,
+        description=description,
+        expression=expression,
+        architectures=architectures,
+        properties=properties,
+    )
+
+
+def is_spi_pipe_counter(counter):
+    for pattern in spi_pipe_counter_regexs:
+        if re.match(pattern, counter):
+            return True
+    return False
+
+
+def get_base_spi_pipe_counter(counter):
+    for pattern in spi_pipe_counter_regexs:
+        match = re.match(pattern, counter)
+        if match:
+            return match.group(1)
+    return ""
 
 
 def using_v1():
@@ -58,7 +230,13 @@ def using_v1():
 
 
 def using_v3():
-    return "ROCPROF" in os.environ.keys() and os.environ["ROCPROF"].endswith("rocprofv3")
+    return "ROCPROF" not in os.environ.keys() or (
+        "ROCPROF" in os.environ.keys()
+        and (
+            os.environ["ROCPROF"].endswith("rocprofv3")
+            or os.environ["ROCPROF"] == "rocprofiler-sdk"
+        )
+    )
 
 
 def get_version(rocprof_compute_home) -> dict:
@@ -117,12 +295,26 @@ def get_version_display(version, sha, mode):
     return buf.getvalue()
 
 
-def detect_rocprof():
+def detect_rocprof(args):
     """Detect loaded rocprof version. Resolve path and set cmd globally."""
     global rocprof_cmd
+
+    if os.environ.get("ROCPROF") == "rocprofiler-sdk":
+        if not path(args.rocprofiler_sdk_library_path).exists():
+            console_error(
+                "Could not find rocprofiler-sdk library at "
+                + args.rocprofiler_sdk_library_path
+            )
+        rocprof_cmd = "rocprofiler-sdk"
+        console_debug("rocprof_cmd is {}".format(rocprof_cmd))
+        console_debug(
+            "rocprofiler_sdk_path is {}".format(args.rocprofiler_sdk_library_path)
+        )
+        return rocprof_cmd
+
     # detect rocprof
     if not "ROCPROF" in os.environ.keys():
-        rocprof_cmd = "rocprof"
+        rocprof_cmd = "rocprofv3"
     else:
         rocprof_cmd = os.environ["ROCPROF"]
 
@@ -130,7 +322,7 @@ def detect_rocprof():
     rocprof_path = shutil.which(rocprof_cmd)
 
     if not rocprof_path:
-        rocprof_cmd = "rocprof"
+        rocprof_cmd = "rocprofv3"
         console_warning(
             "Unable to resolve path to %s binary. Reverting to default." % rocprof_cmd
         )
@@ -421,6 +613,11 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
     """
     pd_counter_collections = pd.read_csv(counter_file)
     pd_agent_info = pd.read_csv(agent_info_filepath)
+
+    # For backwards compatability. Older rocprof versions do not provide this.
+    if not "Accum_VGPR_Count" in pd_counter_collections.columns:
+        pd_counter_collections["Accum_VGPR_Count"] = 0
+
     result = pd_counter_collections.pivot_table(
         index=[
             "Correlation_Id",
@@ -436,6 +633,7 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
             "LDS_Block_Size",
             "Scratch_Size",
             "VGPR_Count",
+            "Accum_VGPR_Count",
             "SGPR_Count",
             "Start_Timestamp",
             "End_Timestamp",
@@ -487,12 +685,8 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
         agent_id = result.at[idx, "Agent_Id"]
         result.at[idx, "Agent_Id"] = gpu_id_map[agent_id]
 
-    # Accum_VGPR is currently missing in rocprofv3 output
-    result["Accum_VGPR"] = 0
-
     # Drop the 'Node_Id' column if you don't need it in the final DataFrame
     result.drop(columns="Node_Id", inplace=True)
-    result["Accum_VGPR"] = 0
 
     name_mapping = {
         "Dispatch_Id": "Dispatch_ID",
@@ -505,7 +699,7 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
         "LDS_Block_Size": "LDS_Per_Workgroup",
         "Scratch_Size": "Scratch_Per_Workitem",
         "VGPR_Count": "Arch_VGPR",
-        # "":"Accum_VGPR",
+        "Accum_VGPR_Count": "Accum_VGPR",
         "SGPR_Count": "SGPR",
         "Wave_Front_Size": "Wave_Size",
         "Kernel_Name": "Kernel_Name",
@@ -549,6 +743,35 @@ def v3_counter_csv_to_v2_csv(counter_file, agent_info_filepath, converted_csv_fi
     result.to_csv(converted_csv_file, index=False)
 
 
+def parse_text(text_file):
+    """
+    Parse the text file to get the pmc counters.
+    """
+
+    def process_line(line):
+        if "pmc:" not in line:
+            return ""
+        line = line.strip()
+        pos = line.find("#")
+        if pos >= 0:
+            line = line[0:pos]
+
+        def _dedup(_line, _sep):
+            for itr in _sep:
+                _line = " ".join(_line.split(itr))
+            return _line.strip()
+
+        # remove tabs and duplicate spaces
+        return _dedup(line.replace("pmc:", ""), ["\n", "\t", " "]).split(" ")
+
+    with open(text_file, "r") as file:
+        return [
+            counter
+            for litr in [process_line(itr) for itr in file.readlines()]
+            for counter in litr
+        ]
+
+
 def run_prof(
     fname, profiler_options, workload_dir, mspec, loglevel, format_rocprof_output
 ):
@@ -559,19 +782,30 @@ def run_prof(
 
     path_counter_config_yaml = path(fname).with_suffix(".yaml")
     # standard rocprof options
-    default_options = ["-i", fname]
-    options = default_options + profiler_options
+    if rocprof_cmd == "rocprofiler-sdk":
+        options = profiler_options
+        options["ROCPROF_COUNTER_COLLECTION"] = "1"
+        options["ROCPROF_COUNTERS"] = "pmc: " + " ".join(parse_text(fname))
+    else:
+        default_options = ["-i", fname]
+        options = default_options + profiler_options
+
+    if using_v3():
+        if rocprof_cmd == "rocprofiler-sdk":
+            options["ROCPROF_AGENT_INDEX"] = "absolute"
+        else:
+            options = ["-A", "absolute"] + options
+
     if using_v3() and path_counter_config_yaml.exists():
-        options = ["-E", str(path_counter_config_yaml)] + options
+        if rocprof_cmd == "rocprofiler-sdk":
+            with open(path_counter_config_yaml, "r") as file:
+                options["ROCPROF_EXTRA_COUNTERS_CONTENTS"] = file.read()
+        else:
+            options = ["-E", str(path_counter_config_yaml)] + options
 
     # set required env var for mi300
     new_env = None
-    if (
-        mspec.gpu_model.lower() == "mi300x_a0"
-        or mspec.gpu_model.lower() == "mi300x_a1"
-        or mspec.gpu_model.lower() == "mi300a_a0"
-        or mspec.gpu_model.lower() == "mi300a_a1"
-    ):
+    if mspec.gpu_model.lower() not in ("mi50", "mi60", "mi210", "mi250", "mi250x"):
         new_env = os.environ.copy()
         new_env["ROCPROFILER_INDIVIDUAL_XCC_MODE"] = "1"
 
@@ -580,16 +814,26 @@ def run_prof(
         is_timestamps = True
     time_1 = time.time()
 
-    console_debug("rocprof command: {}".format([rocprof_cmd] + options))
-    # profile the app
-    if new_env:
+    if rocprof_cmd == "rocprofiler-sdk":
+        app_cmd = options.pop("APP_CMD")
+        for key, value in options.items():
+            new_env[key] = value
+        console_debug("rocprof sdk env vars: {}".format(new_env))
+        console_debug("rocprof sdk user provided command: {}".format(app_cmd))
         success, output = capture_subprocess_output(
-            [rocprof_cmd] + options, new_env=new_env, profileMode=True
+            app_cmd, new_env=new_env, profileMode=True
         )
     else:
-        success, output = capture_subprocess_output(
-            [rocprof_cmd] + options, profileMode=True
-        )
+        console_debug("rocprof command: {}".format([rocprof_cmd] + options))
+        # profile the app
+        if new_env:
+            success, output = capture_subprocess_output(
+                [rocprof_cmd] + options, new_env=new_env, profileMode=True
+            )
+        else:
+            success, output = capture_subprocess_output(
+                [rocprof_cmd] + options, profileMode=True
+            )
 
     time_2 = time.time()
     console_debug(
@@ -610,6 +854,9 @@ def run_prof(
         # rocprofv2 has separate csv files for each process
         results_files = glob.glob(workload_dir + "/out/pmc_1/results_*.csv")
 
+        if len(results_files) == 0:
+            return
+
         # Combine results into single CSV file
         combined_results = pd.concat(
             [pd.read_csv(f) for f in results_files], ignore_index=True
@@ -621,19 +868,22 @@ def run_prof(
         combined_results.to_csv(
             workload_dir + "/out/pmc_1/results_" + fbase + ".csv", index=False
         )
-    elif rocprof_cmd.endswith("v3"):
+    elif rocprof_cmd.endswith("v3") or rocprof_cmd == "rocprofiler-sdk":
         # rocprofv3 requires additional processing for each process
         results_files = process_rocprofv3_output(
             format_rocprof_output, workload_dir, is_timestamps
         )
-        # kokkos trace output processing for --kokkos-trace
-        # TODO: as rocprofv3 --kokkos-trace feature improves, rocprof-compute should make updates accordingly
-        if "--kokkos-trace" in options:
-            console_debug(
-                "[run_prof] --kokkos-trace detected, handling *_marker_api_trace.csv outputs."
-            )
-            process_kokkos_trace_output(workload_dir, fbase)
-        # TODO: add hip trace output processing
+
+        if rocprof_cmd == "rocprofiler-sdk":
+            # TODO: as rocprofv3 --kokkos-trace feature improves, rocprof-compute should make updates accordingly
+            if "ROCPROF_HIP_RUNTIME_API_TRACE" in options:
+                process_hip_trace_output(workload_dir, fbase)
+        else:
+            if "--kokkos-trace" in options:
+                # TODO: as rocprofv3 --kokkos-trace feature improves, rocprof-compute should make updates accordingly
+                process_kokkos_trace_output(workload_dir, fbase)
+            elif "--hip-trace" in options:
+                process_hip_trace_output(workload_dir, fbase)
 
         # Combine results into single CSV file
         if results_files:
@@ -656,7 +906,9 @@ def run_prof(
     if new_env and not using_v3() and not using_v1():
         # flatten tcc for applicable mi300 input
         f = path(workload_dir + "/out/pmc_1/results_" + fbase + ".csv")
-        xcds = total_xcds(mspec.gpu_model, mspec.compute_partition)
+        xcds = mi_gpu_specs.get_num_xcds(
+            mspec.gpu_arch, mspec.gpu_model, mspec.compute_partition
+        )
         df = flatten_tcc_info_across_xcds(f, xcds, int(mspec._l2_banks))
         df.to_csv(f, index=False)
 
@@ -695,6 +947,76 @@ def run_prof(
     df = pd.read_csv(workload_dir + "/" + fbase + ".csv")
     df.rename(columns=output_headers, inplace=True)
     df.to_csv(workload_dir + "/" + fbase + ".csv", index=False)
+
+
+def pc_sampling_prof(
+    method, interval, workload_dir, appcmd, rocprofiler_sdk_library_path
+):
+    """
+    Run rocprof with pc sampling. Current support v3 only.
+    """
+    # Todo:
+    #   - precheck with rocprofv3 –-list-avail
+
+    unit = "time" if method == "host_trap" else "cycles"
+
+    if rocprof_cmd == "rocprofiler-sdk":
+        rocm_libdir = str(pathlib.Path(rocprofiler_sdk_library_path).parent)
+        rocprofiler_sdk_tool_path = str(
+            pathlib.Path(rocm_libdir).joinpath(
+                "rocprofiler-sdk/librocprofiler-sdk-tool.so"
+            )
+        )
+        ld_preload = [
+            rocprofiler_sdk_tool_path,
+            rocprofiler_sdk_library_path,
+        ]
+        options = {
+            "ROCPROFILER_LIBRARY_CTOR": "1",
+            "LD_PRELOAD": ":".join(ld_preload),
+            "ROCP_TOOL_LIBRARIES": rocprofiler_sdk_tool_path,
+            "LD_LIBRARY_PATH": rocm_libdir,
+            "ROCPROF_OUTPUT_FORMAT": "csv,json",
+            "ROCPROF_OUTPUT_PATH": workload_dir,
+            "ROCPROF_OUTPUT_FILE_NAME": "ps_file",
+            "ROCPROFILER_PC_SAMPLING_BETA_ENABLED": "1",
+            "ROCPROF_PC_SAMPLING_UNIT": unit,
+            "ROCPROF_PC_SAMPLING_INTERVAL": str(interval),
+            "ROCPROF_PC_SAMPLING_METHOD": "host_trap",
+        }
+        new_env = os.environ.copy()
+        for key, value in options.items():
+            new_env[key] = value
+        console_debug("pc sampling rocprof sdk env vars: {}".format(new_env))
+        console_debug("pc sampling rocprof sdk user provided command: {}".format(appcmd))
+        success, output = capture_subprocess_output(
+            appcmd, new_env=new_env, profileMode=True
+        )
+    else:
+        options = [
+            "--pc-sampling-beta-enabled",
+            "--pc-sampling-method",
+            "host_trap",
+            "--pc-sampling-unit",
+            unit,
+            "--output-format",
+            "csv",
+            "json",
+            "--pc-sampling-interval",
+            str(interval),
+            "-d",
+            workload_dir,
+            "-o",
+            "ps_file",  # todo: sync up with the name from source in 2100_.yaml
+            "--",
+            appcmd,
+        ]
+        success, output = capture_subprocess_output(
+            [rocprof_cmd] + options, new_env=os.environ.copy(), profileMode=True
+        )
+
+    if not success:
+        console_error("PC sampling failed.")
 
 
 def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
@@ -755,7 +1077,6 @@ def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
         else:
             # when the input is not for timestamps, and counter csv file is not generated, we assume failed rocprof run and will completely bypass the file generation and merging for current pmc
             results_files_csv = []
-            console_warning("No counter csv files generated, rocprofv3 run failed!!!")
 
     else:
         console_error("The output file of rocprofv3 can only support json or csv!!!")
@@ -763,6 +1084,7 @@ def process_rocprofv3_output(rocprof_output, workload_dir, is_timestamps):
     return results_files_csv
 
 
+@demarcate
 def process_kokkos_trace_output(workload_dir, fbase):
     # marker api trace csv files are generated for each process
     marker_api_trace_csvs = glob.glob(
@@ -787,7 +1109,34 @@ def process_kokkos_trace_output(workload_dir, fbase):
         )
 
 
+@demarcate
+def process_hip_trace_output(workload_dir, fbase):
+    # marker api trace csv files are generated for each process
+    hip_api_trace_csvs = glob.glob(workload_dir + "/out/pmc_1/*/*_hip_api_trace.csv")
+    existing_hip_files_csv = [d for d in hip_api_trace_csvs if path(d).is_file()]
+
+    # concate and output marker api trace info
+    combined_results = pd.concat(
+        [pd.read_csv(f) for f in existing_hip_files_csv], ignore_index=True
+    )
+
+    combined_results.to_csv(
+        workload_dir + "/out/pmc_1/results_" + fbase + "_hip_api_trace.csv",
+        index=False,
+    )
+
+    if path(workload_dir + "/out").exists():
+        shutil.copyfile(
+            workload_dir + "/out/pmc_1/results_" + fbase + "_hip_api_trace.csv",
+            workload_dir + "/" + fbase + "_hip_api_trace.csv",
+        )
+
+
 def replace_timestamps(workload_dir):
+
+    if not path(workload_dir, "timestamps.csv").is_file():
+        return
+
     df_stamps = pd.read_csv(workload_dir + "/timestamps.csv")
     if "Start_Timestamp" in df_stamps.columns and "End_Timestamp" in df_stamps.columns:
         # Update timestamps for all *.csv output files
@@ -831,8 +1180,6 @@ def gen_sysinfo(
 def detect_roofline(mspec):
     from utils import specs
 
-    rocm_ver = mspec.rocm_version[:1]
-
     os_release = path("/etc/os-release").read_text()
     ubuntu_distro = specs.search(r'VERSION_ID="(.*?)"', os_release)
     rhel_distro = specs.search(r'PLATFORM_ID="(.*?)"', os_release)
@@ -843,7 +1190,6 @@ def detect_roofline(mspec):
         if path(rooflineBinary).exists():
             console_warning("roofline", "Detected user-supplied binary")
             return {
-                "rocm_ver": "override",
                 "distro": "override",
                 "path": rooflineBinary,
             }
@@ -854,6 +1200,7 @@ def detect_roofline(mspec):
     elif (
         rhel_distro == "platform:el8"
         or rhel_distro == "platform:el9"
+        or rhel_distro == "platform:el10"
         or rhel_distro == "platform:al8"
     ):
         # Must be a valid RHEL machine
@@ -861,18 +1208,18 @@ def detect_roofline(mspec):
     elif (
         (type(sles_distro) == str and len(sles_distro) >= 3)
         and sles_distro[:2] == "15"  # confirm string and len
-        and int(sles_distro[3]) >= 3  # SLES15 and SP >= 3
+        and int(sles_distro[3]) >= 6  # SLES15 and SP >= 6
     ):
         # Must be a valid SLES machine
-        # Use SP3 binary for all forward compatible service pack versions
-        distro = "15.3"
-    elif ubuntu_distro == "20.04" or ubuntu_distro == "22.04" or ubuntu_distro == "24.04":
+        # Use SP6 binary for all forward compatible service pack versions
+        distro = "15.6"
+    elif ubuntu_distro == "22.04" or ubuntu_distro == "24.04":
         # Must be a valid Ubuntu machine
-        distro = ubuntu_distro
+        distro = "22.04"
     else:
         console_error("roofline", "Cannot find a valid binary for your operating system")
 
-    target_binary = {"rocm_ver": rocm_ver, "distro": distro}
+    target_binary = {"distro": distro}
     return target_binary
 
 
@@ -906,16 +1253,14 @@ def mibench(args, mspec):
 
     distro_map = {
         "platform:el8": "rhel8",
-        "15.3": "sles15sp5",
-        "20.04": "ubuntu20_04",
-        "22.04": "ubuntu20_04",
-        "24.04": "ubuntu20_04",
+        "15.6": "sles15sp6",
+        "22.04": "ubuntu22_04",
     }
 
     binary_paths = []
 
     target_binary = detect_roofline(mspec)
-    if target_binary["rocm_ver"] == "override":
+    if target_binary["distro"] == "override":
         binary_paths.append(target_binary["path"])
     else:
         # check two potential locations for roofline binaries due to differences in
@@ -926,15 +1271,7 @@ def mibench(args, mspec):
         ]
 
         for dir in potential_paths:
-            path_to_binary = (
-                dir
-                + "-"
-                + distro_map[target_binary["distro"]]
-                + "-"
-                + mspec.gpu_series.lower()
-                + "-rocm"
-                + target_binary["rocm_ver"]
-            )
+            path_to_binary = dir + "-" + distro_map[target_binary["distro"]]
             binary_paths.append(path_to_binary)
 
     # Distro is valid but cant find rocm ver
@@ -1028,62 +1365,6 @@ def flatten_tcc_info_across_xcds(file, xcds, tcc_channel_per_xcd):
     return df
 
 
-def total_xcds(gpu_model, compute_partition):
-    """
-    Returns the number of xcds for a gpu model and compute_partition pair.
-    """
-
-    # For mi300 chips, return result from mi_gpu_spec
-    result = get_mi300_num_xcds(gpu_model, compute_partition)
-    if result:
-        return result
-
-    # For other systems, use manual check
-    # check MI300 has a valid compute partition
-    mi300a_model = ["mi300a_a0", "mi300a_a1"]
-    mi300x_model = ["mi300x_a0", "mi300x_a1"]
-    mi308x_model = ["mi308x"]
-    if (
-        gpu_model.lower() in mi300a_model + mi300x_model + mi308x_model
-        and compute_partition == "NA"
-    ):
-        console_error("Invalid compute partition found for {}".format(gpu_model))
-
-    if gpu_model.lower() not in mi300a_model + mi300x_model + mi308x_model:
-        return 1
-    # from the whitepaper
-    # https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/white-papers/amd-cdna-3-white-paper.pdf
-    if compute_partition.lower() == "spx":
-        if gpu_model.lower() in mi300a_model:
-            return 6
-        if gpu_model.lower() in mi300x_model:
-            return 8
-        if gpu_model.lower() in mi308x_model:
-            return 4
-    if compute_partition.lower() == "tpx":
-        if gpu_model.lower() in mi300a_model:
-            return 2
-    if compute_partition.lower() == "dpx":
-        if gpu_model.lower() in mi300x_model:
-            return 4
-        if gpu_model.lower() in mi308x_model:
-            return 2
-    if compute_partition.lower() == "qpx":
-        if gpu_model.lower() in mi300x_model:
-            return 2
-    if compute_partition.lower() == "cpx":
-        if gpu_model.lower() in mi300x_model:
-            return 1
-        if gpu_model.lower() in mi308x_model:
-            return 1
-    # TODO implement other archs here as needed
-    console_error(
-        "Unknown compute partition / arch found for {} / {}".format(
-            compute_partition, gpu_model
-        )
-    )
-
-
 def get_submodules(package_name):
     """List all submodules for a target package"""
     import importlib
@@ -1115,7 +1396,7 @@ def is_workload_empty(path):
             )
 
     else:
-        console_error("profiling", "Cannot find pmc_perf.csv in %s" % path)
+        console_error("analysis", "No profiling data found.")
 
 
 def print_status(msg):

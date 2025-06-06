@@ -311,7 +311,7 @@ Request flow
 The following is a diagram that illustrates how L2↔Fabric requests are reported
 by ROCm Compute Profiler:
 
-.. figure:: ../data/performance-model/fabric.png
+.. figure:: ../data/performance-model/l2perf_model.png
    :align: center
    :alt: L2-Fabric transaction flow on AMD Instinct MI-series accelerators
    :width: 800
@@ -350,38 +350,18 @@ accelerator’s local HBM, and an uncached write request. The request-flow
 diagram marks *exclusive* classifications as a splitting of the flow,
 while *non-exclusive* requests do not split the flow line. For example,
 a request is either a 32B Write Request OR a 64B Write request, as the
-flow splits at this point:
-
-.. figure:: ../data/performance-model/split.*
-   :align: center
-   :alt: Splitting request flow
-   :width: 800
-
-   Splitting request flow
+flow splits at this point.
 
 However, continuing along, the same request might be an atomic request and an
-uncached write request, as reflected by a non-split flow:
-
-.. figure:: ../data/performance-model/nosplit.*
-   :align: center
-   :alt: Non-splitting request flow
-   :width: 800
-
-   Non-splitting request flow
+uncached write request, as reflected by a non-split flow.
 
 Finally, we note that :ref:`uncached <memory-type>` read requests (e.g., to
 :ref:`fine-grained memory <memory-type>`) are handled specially on CDNA
 accelerators, as indicated in the request flow diagram. These are
 expected to be counted as a 64B Read Request, and *if* they are requests
 to uncached memory (denoted by the dashed line), they will also be
-counted as *two* uncached read requests (that is, the request is split):
+counted as *two* uncached read requests (that is, the request is split).
 
-.. figure:: ../data/performance-model/uncached.*
-   :align: center
-   :alt: Uncached read-request splitting
-   :width: 800
-
-   Uncached read-request splitting.
 
 .. _l2-request-metrics:
 
@@ -767,8 +747,7 @@ remote accelerators or CPUs.
    `Infinity Fabric <https://www.amd.com/en/technologies/infinity-architecture>`_
    technology can be used to connect multiple accelerators to achieve advanced
    peer-to-peer connectivity and enhanced bandwidths over traditional PCIe
-   connections. Some AMD Instinct MI-series accelerators like the MI250X
-   `feature coherent CPU↔accelerator connections built using AMD Infinity Fabric <https://www.amd.com/system/files/documents/amd-cdna2-white-paper.pdf>`_.
+   connections. Some AMD Instinct MI-series accelerators like the MI250X feature coherent CPU-to-accelerator connections are built using AMD Infinity Fabric. For more information, see the `AMD CDNA2 white paper <https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf>`_.
 
 .. rubric:: Disclaimer
 

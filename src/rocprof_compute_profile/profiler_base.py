@@ -45,6 +45,7 @@ from utils.logger import (
 from utils.utils import (
     capture_subprocess_output,
     gen_sysinfo,
+    pc_sampling_prof,
     print_status,
     run_prof,
     run_rocscope,
@@ -63,6 +64,8 @@ class RocProfCompute_Base:
         self.__filter_metric_ids = [
             name for name, type in args.filter_blocks.items() if type == "metric_id"
         ]
+        # Fixme: remove the hack code "21" after we could enable pc sampling as default
+        self.__pc_sampling = True if "21" in self.__filter_metric_ids else False
 
     def get_args(self):
         return self.__args
@@ -133,6 +136,9 @@ class RocProfCompute_Base:
             else:
                 # join by unique index of kernel
                 df = pd.merge(df, _df, how="inner", on="key", suffixes=("", f"_{i}"))
+
+        if df is None or df.empty:
+            return
 
         # TODO: check for any mismatch in joins
         duplicate_cols = {
@@ -302,11 +308,20 @@ class RocProfCompute_Base:
                 "Profiling command required. Pass application executable after -- at the end of options.\n\t\ti.e. rocprof-compute profile -n vcopy -- ./vcopy -n 1048576 -b 256"
             )
 
-        # verify name meets MongoDB length requirements and no illegal chars
-        if len(self.__args.name) > 35:
-            console_error("-n/--name exceeds 35 character limit. Try again.")
-        if self.__args.name.find(".") != -1 or self.__args.name.find("-") != -1:
-            console_error("'-' and '.' are not permitted in -n/--name")
+        gen_sysinfo(
+            workload_name=self.__args.name,
+            workload_dir=self.get_args().path,
+            ip_blocks=[
+                name
+                for name, type in self.__args.filter_blocks.items()
+                if type == "hardware_block"
+            ],
+            app_cmd=self.__args.remaining,
+            skip_roof=self.__args.no_roof,
+            roof_only=self.__args.roof_only,
+            mspec=self._soc._mspec,
+            soc=self._soc,
+        )
 
     @abstractmethod
     def run_profiling(self, version: str, prog: str):
@@ -395,6 +410,7 @@ class RocProfCompute_Base:
                 self.__profiler == "rocprofv1"
                 or self.__profiler == "rocprofv2"
                 or self.__profiler == "rocprofv3"
+                or self.__profiler == "rocprofiler-sdk"
             ):
                 start_run_prof = time.time()
                 run_prof(
@@ -420,27 +436,32 @@ class RocProfCompute_Base:
                 # TODO: Finish logic
                 console_error("Profiler not supported")
 
+        if self.__pc_sampling == True and self.__profiler in (
+            "rocprofv3",
+            "rocprofiler-sdk",
+        ):
+            start_run_prof = time.time()
+            pc_sampling_prof(
+                method=self.get_args().pc_sampling_method,
+                interval=self.get_args().pc_sampling_interval,
+                workload_dir=self.get_args().path,
+                appcmd=self.get_args().remaining,
+                rocprofiler_sdk_library_path=self.get_args().rocprofiler_sdk_library_path,
+            )
+            end_run_prof = time.time()
+            console_debug(
+                "The time of pc sampling profiling is {} m {} sec".format(
+                    int((end_run_prof - start_run_prof) / 60),
+                    str((end_run_prof - start_run_prof) % 60),
+                )
+            )
+
     @abstractmethod
     def post_processing(self):
         """Perform any post-processing steps prior to profiling."""
         console_debug(
             "profiling",
             "performing post-processing using %s profiler" % self.__profiler,
-        )
-
-        gen_sysinfo(
-            workload_name=self.__args.name,
-            workload_dir=self.get_args().path,
-            ip_blocks=[
-                name
-                for name, type in self.__args.filter_blocks.items()
-                if type == "hardware_block"
-            ],
-            app_cmd=self.__args.remaining,
-            skip_roof=self.__args.no_roof,
-            roof_only=self.__args.roof_only,
-            mspec=self._soc._mspec,
-            soc=self._soc,
         )
 
 

@@ -39,9 +39,9 @@ import pandas as pd
 
 import config
 from utils.logger import console_debug, console_error, console_log, console_warning
-from utils.mi_gpu_spec import get_gpu_series_dict, get_mi300_chip_id_dict
+from utils.mi_gpu_spec import get_gpu_series_dict, get_mi300_chip_id_dict, mi_gpu_specs
 from utils.tty import get_table_string
-from utils.utils import get_version, total_xcds
+from utils.utils import get_version
 
 VERSION_LOC = [
     "version",
@@ -59,32 +59,32 @@ def detect_arch(_rocminfo):
     for idx1, linetext in enumerate(_rocminfo):
         # NOTE: currently supported socs are gfx archs only
         gpu_arch = search(r"^\s*Name\s*:\s* ([Gg][Ff][Xx][a-zA-Z0-9]+).*\s*$", linetext)
-        if gpu_arch in get_gpu_series_dict().keys():
+        if gpu_arch in mi_gpu_specs.get_gpu_series_dict().keys():
             break
-        if str(gpu_arch) in get_gpu_series_dict().keys():
+        if str(gpu_arch) in mi_gpu_specs.get_gpu_series_dict().keys():
             gpu_arch = str(gpu_arch)
             break
-    if not gpu_arch in get_gpu_series_dict().keys():
+    if not gpu_arch in mi_gpu_specs.get_gpu_series_dict().keys():
         console_error("Cannot find a supported arch in rocminfo: " + str(gpu_arch))
     else:
         return (gpu_arch, idx1)
 
 
 def detect_gpu_chip_id(_rocminfo):
+    gpu_chip_id = None
+
     for idx1, linetext in enumerate(_rocminfo):
         # NOTE: current supported socs only have numbers in Chip ID
-        gpu_chip_id = search(r"^\s*Chip ID\s*:\s* ([0-9]+).*\s*$", linetext)
-        if gpu_chip_id and int(gpu_chip_id) in get_mi300_chip_id_dict().keys():
-            gpu_chip_id = str(gpu_chip_id)
+        chip_found = search(r"^\s*Chip ID\s*:\s* ([0-9]+).*\s*$", linetext)
+        if chip_found:
+            gpu_chip_id = str(chip_found)
             break
-        if str(gpu_chip_id) in get_mi300_chip_id_dict().keys():
-            gpu_chip_id = str(gpu_chip_id)
-            break
+
     if not gpu_chip_id:
         console_warning("No Chip ID detected: " + str(gpu_chip_id))
     elif (
-        gpu_chip_id not in get_mi300_chip_id_dict().keys()
-        and int(gpu_chip_id) not in get_mi300_chip_id_dict().keys()
+        gpu_chip_id not in mi_gpu_specs.get_chip_id_dict().keys()
+        and int(gpu_chip_id) not in mi_gpu_specs.get_chip_id_dict().keys()
     ):
         console_warning("Unknown Chip ID detected: " + str(gpu_chip_id))
     return gpu_chip_id
@@ -152,15 +152,40 @@ def generate_machine_specs(args, sysinfo: dict = None):
     rocm_version = get_rocm_ver().strip()
     # FIXME: use device
 
+    amd_smi_output = run(["amd-smi", "static"], exit_on_error=True)
     vbios_pattern = r"PART_NUMBER:\s*(\S+)"
     compute_partition_pattern = r"COMPUTE_PARTITION:\s*(\S+)"
+    accelerator_partition_pattern = r"ACCELERATOR_PARTITION:\s*(\S+)"
     memory_partition_pattern = r"MEMORY_PARTITION:\s*(\S+)"
 
-    vbios = search(vbios_pattern, run(["amd-smi", "static"], exit_on_error=True))
-    compute_partition = search(compute_partition_pattern, run(["amd-smi", "static"]))
+    rocm_smi_compute_partition_output = run(
+        ["rocm-smi", "--showcomputepartition"], exit_on_error=True
+    )
+    rocm_smi_compute_partition_pattern = r"Compute Partition:\s*(\S+)"
+
+    vbios = search(vbios_pattern, amd_smi_output)
+    # 1. get compute partition from amd-smi
+    compute_partition = search(compute_partition_pattern, amd_smi_output)
+    console_debug(f"amd-smi compute partition: {compute_partition}")
+    # 2. get compute partition from rocm-smi
     if compute_partition is None:
-        compute_partition = "NA"
-    memory_partition = search(memory_partition_pattern, run(["amd-smi", "static"]))
+        compute_partition = search(
+            rocm_smi_compute_partition_pattern, rocm_smi_compute_partition_output
+        )
+        console_debug(f"rocm-smi compute partition: {compute_partition}")
+    # 3. get compute partition from amd-smi using keyword accelerator
+    if compute_partition is None:
+        compute_partition = search(accelerator_partition_pattern, amd_smi_output)
+        console_debug(f"amd-smi accelerator partition: {compute_partition}")
+    # 4. apply default compute partition
+    if compute_partition is None:
+        console_warning(
+            f"Can not detect compute/accelerator partition from amd-smi and rocm-smi."
+        )
+        console_warning(f"Applying default compute partition: SPX")
+        compute_partition = "SPX"
+
+    memory_partition = search(memory_partition_pattern, amd_smi_output)
     if memory_partition is None:
         memory_partition = "NA"
 
@@ -210,10 +235,14 @@ def generate_machine_specs(args, sysinfo: dict = None):
     soc_class = getattr(soc_module, specs.gpu_arch + "_soc")
     soc_obj = soc_class(args, specs)
     # Update arch specific specs
-    specs.total_l2_chan: str = total_l2_banks(
-        specs.gpu_model, int(specs._l2_banks), specs.compute_partition
+    specs.gpu_model = mi_gpu_specs.get_gpu_model(specs.gpu_arch, specs.gpu_chip_id)
+    specs.num_xcd = mi_gpu_specs.get_num_xcds(
+        specs.gpu_arch, specs.gpu_model, specs.compute_partition
     )
-    specs.hbm_bw: str = str(int(specs.max_mclk) / 1000 * 32 * specs.get_hbm_channels())
+    specs.total_l2_chan: str = total_l2_banks(
+        specs.gpu_arch, specs.gpu_model, specs._l2_banks, specs.compute_partition
+    )
+    specs.num_hbm_channels: str = str(specs.get_hbm_channels())
     return specs
 
 
@@ -517,15 +546,6 @@ class MachineSpecs:
             "name": "Pipes per GPU",
         },
     )
-    hbm_bw: str = field(
-        default=None,
-        metadata={
-            "doc": "The peak theoretical HBM bandwidth for the accelerators/GPUs in the system. On systems with\n"
-            "configurable partitioning, (e.g., MI300) this is the peak theoretical HBM bandwidth for a partition.",
-            "name": "HBM BW",
-            "unit": "GB/s",
-        },
-    )
     num_xcd: str = field(
         default=None,
         metadata={
@@ -535,24 +555,21 @@ class MachineSpecs:
             "unit": "XCDs",
         },
     )
+    num_hbm_channels: str = field(
+        default=None,
+        metadata={"doc": "Number of HBM channels", "name": "HBM channels"},
+    )
 
     def get_hbm_channels(self):
-        # check MI300 has a valid compute partition
-        mi300a_archs = ["mi300a_a0", "mi300a_a1"]
-        mi300x_archs = ["mi300x_a0", "mi300x_a1"]
-        mi308x_archs = ["mi308x"]
-        if self.gpu_model.lower() in mi300a_archs + mi300x_archs + mi308x_archs:
+        if self.memory_partition.lower().startswith("nps"):
             hbmchannels = 128
-            if self.memory_partition.lower() == "nps2":
-                hbmchannels /= 2
-            elif self.memory_partition.lower() == "nps4":
+            if self.memory_partition.lower() == "nps4":
                 hbmchannels /= 4
             elif self.memory_partition.lower() == "nps8":
                 hbmchannels /= 8
-            return int(hbmchannels)
+            return hbmchannels
         else:
-            hbmchannels = int(self.total_l2_chan)
-        return hbmchannels
+            return int(self.total_l2_chan)
 
     def get_class_members(self):
         all_populated = True
@@ -579,7 +596,7 @@ class MachineSpecs:
                 data[name] = value
 
         if not all_populated:
-            console_error("Missing specs fields for %s" % self.gpu_arch)
+            console_warning("Missing specs fields for %s" % self.gpu_arch)
         return pd.DataFrame(data, index=[0])
 
     def __repr__(self):
@@ -679,10 +696,13 @@ def total_sqc(archname, numCUs, numSEs):
     return int(sq_per_se) * int(numSEs)
 
 
-def total_l2_banks(archname, L2Banks, compute_partition):
-    xcds = total_xcds(archname, compute_partition)
-    totalL2Banks = L2Banks * xcds
-    return totalL2Banks
+def total_l2_banks(gpu_arch, gpu_model, L2Banks, compute_partition):
+    xcd_count = mi_gpu_specs.get_num_xcds(gpu_arch, gpu_model, compute_partition)
+
+    # TODO: MachineSpecs and OmniSoC mspec should converge...
+    if L2Banks is not None and xcd_count is not None:
+        return int(L2Banks) * int(xcd_count)
+    return None
 
 
 if __name__ == "__main__":
