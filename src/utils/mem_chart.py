@@ -31,6 +31,9 @@ from plotille import Canvas
 
 
 def make_format_spec(num, align=">"):
+    """
+    Generate alignment string for a given input
+    """
     if align not in ("<", ">", "^"):
         raise ValueError("align must be one of '<', '>', or '^'")
 
@@ -45,7 +48,6 @@ def make_format_spec(num, align=">"):
         if isinstance(num, int):
             return f"{align}{int_part}"
         else:
-            # Float with .0, .00, etc.
             return f"{align}{str(num)}f"
     else:
         # Float with meaningful decimal digits
@@ -57,6 +59,9 @@ def make_format_spec(num, align=">"):
 
 
 def is_value_valid(value):
+    """
+    Check if a value is valid and display N/A if not(to be valid, it needs to be not None, and be int or float)
+    """
     if value is None:
         return False
 
@@ -68,15 +73,20 @@ def is_value_valid(value):
 
 def format_text(
     value,
-    key: str = None,
+    key=None,
+    mark_between: str = ": ",
     post_description_with_space: str = "",
     value_step_prec_rightalign=0,
     key_step_prec_leftalign=0,
+    key_align="<",
+    value_align=">",
 ):
     """
-    Define a function .
+    Format a text string for canvas to display according to input key value pair and make proper aligment
+    For invalid value, it displays N/A
+    All strings to be displayed on Canvas need to use this method
     """
-    value_format = make_format_spec(value_step_prec_rightalign, ">")
+    value_format = make_format_spec(value_step_prec_rightalign, value_align)
 
     if is_value_valid(value):
         value_str = "{val:{format}}".format(val=value, format=value_format)
@@ -92,7 +102,7 @@ def format_text(
         value_str = f"{'N/A':{align}{width}}"
 
     key_format = (
-        make_format_spec(key_step_prec_leftalign, "<") if key is not None else None
+        make_format_spec(key_step_prec_leftalign, key_align) if key is not None else None
     )
     key_str = (
         "{key:{key_format}}".format(key=key, key_format=key_format)
@@ -103,7 +113,7 @@ def format_text(
     unit_string = post_description_with_space if not "N/A" in value_str else ""
 
     result_str_no_unit = (
-        "{key}: {value}".format(key=key_str, value=value_str)
+        "{key}{mark}{value}".format(key=key_str, value=value_str, mark=mark_between)
         if key is not None
         else "{value}".format(value=value_str)
     )
@@ -200,7 +210,14 @@ class InstrDispatch(RectFrame):
         i = 0
         for k, v in self.instrs.items():
             # print(k,v)
-            text = "{key:<6}: {val:>4.0f}".format(key=k, val=v)
+            text = format_text(
+                key=k,
+                value=v,
+                key_step_prec_leftalign=6,
+                value_step_prec_rightalign=4.0,
+                key_align=">",
+                value_align="<",
+            )
             canvas.text(
                 self.top_rect_x_min + self.text_x_offset,
                 self.top_rect_y_min - self.rect_y_offset * i + self.text_y_offset,
@@ -234,7 +251,14 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 2.0,
             self.y_max - 3.0,
-            "{a:>3.0f}/{n:>3.0f}".format(a=self.active_cus, n=self.num_cus),
+            format_text(
+                key=self.active_cus,
+                value=self.num_cus,
+                key_step_prec_leftalign=3.0,
+                value_step_prec_rightalign=3.0,
+                key_align=">",
+                value_align="<",
+            ),
             color="yellow",
         )
 
@@ -244,7 +268,12 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 4.0,
             self.y_max - 6.0,
-            "{key:<6}: {val:>5}".format(key="VGPRs", val=self.vgprs),
+            format_text(
+                key="RVGPRseq",
+                value=self.vgprs,
+                key_step_prec_leftalign=6,
+                value_step_prec_rightalign=5,
+            ),
         )
 
         canvas.rect(
@@ -253,7 +282,12 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 4.0,
             self.y_max - 9.0,
-            "{key:<6}: {val:>5.0f}".format(key="SGPRs", val=self.sgprs),
+            format_text(
+                key="SGPRs",
+                value=self.sgprs,
+                key_step_prec_leftalign=6,
+                value_step_prec_rightalign=5.0,
+            ),
         )
 
         canvas.rect(
@@ -263,7 +297,10 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 4.0,
             self.y_max - 14.0,
-            "{val:>13.0f}".format(val=self.lds_alloc),
+            format_text(
+                value=self.lds_alloc,
+                value_step_prec_rightalign=13.0,
+            ),
         )
 
         canvas.rect(
@@ -273,7 +310,10 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 4.0,
             self.y_max - 18.0,
-            "{val:>13.0f}".format(val=self.scratch_alloc),
+            format_text(
+                value=self.scratch_alloc,
+                value_step_prec_rightalign=13.0,
+            ),
         )
 
         canvas.rect(
@@ -283,7 +323,10 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 4.0,
             self.y_max - 23.0,
-            "{val:>13.0f}".format(val=self.wavefronts),
+            format_text(
+                value=self.wavefronts,
+                value_step_prec_rightalign=13.0,
+            ),
         )
 
         canvas.rect(
@@ -293,7 +336,10 @@ class Exec(RectFrame):
         canvas.text(
             self.x_min + 4.0,
             self.y_max - 27.0,
-            "{val:>13.0f}".format(val=self.workgroups),
+            format_text(
+                value=self.workgroups,
+                value_step_prec_rightalign=13.0,
+            ),
         )
 
 
@@ -391,7 +437,12 @@ class Wire_InstrBuff_IL1Cache(RectFrame):
         canvas.text(
             self.x_min + 27,
             self.y_max - end_col + 1,
-            "{key:<6}: {val:>4.0f}".format(key="Fetch", val=self.il1_fetch),
+            format_text(
+                key="Fetch",
+                value=self.il1_fetch,
+                key_step_prec_leftalign=6,
+                value_step_prec_rightalign=4.0,
+            ),
         )
         canvas.text(
             self.x_min, self.y_max - end_col, "-" * (int(self.x_max - self.x_min))
@@ -867,7 +918,13 @@ class Fabric(RectFrame):
         i = 1
         for k, v in self.lat.items():
             # print(k,v)
-            text = "{key:<6}: {val:>6.0f}".format(key=k, val=v)
+            text = format_text(
+                key=k,
+                value=v,
+                key_step_prec_leftalign=6,
+                value_step_prec_rightalign=6.0,
+            )
+
             canvas.text(self.x_min + 4.0, self.y_max - 4.5 - i, text)
             i = i + 1
 
@@ -896,13 +953,23 @@ class Wire_Fabric_HBM(RectFrame):
         canvas.text(
             self.x_min + self.text_x_offset,
             self.y_max,
-            "{key:<2}: {val:>4.0f}".format(key="Rd", val=self.rd),
+            format_text(
+                key="Rd",
+                value=self.rd,
+                key_step_prec_leftalign=2,
+                value_step_prec_rightalign=4.0,
+            ),
         )
         canvas.text(self.x_min + self.text_x_offset - 2, self.y_max - 1.0, "<-----------")
         canvas.text(
             self.x_min + self.text_x_offset,
             self.y_max - 2.0,
-            "{key:<2}: {val:>4.0f}".format(key="Wr", val=self.wr),
+            format_text(
+                key="Wr",
+                value=self.wr,
+                key_step_prec_leftalign=2,
+                value_step_prec_rightalign=4.0,
+            ),
         )
         canvas.text(self.x_min + self.text_x_offset - 2, self.y_max - 3.0, "----------->")
 
