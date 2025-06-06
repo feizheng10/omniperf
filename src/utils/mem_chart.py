@@ -63,9 +63,6 @@ def is_value_valid(value):
     if not isinstance(value, (int, float)):
         return False
 
-    if int(round(value)) == -1:
-        return False
-
     return True
 
 
@@ -81,7 +78,6 @@ def format_text(
     """
     value_format = make_format_spec(value_step_prec_rightalign, ">")
 
-    # Fix typo: remove extra 'is'
     if is_value_valid(value):
         value_str = "{val:{format}}".format(val=value, format=value_format)
     else:
@@ -130,8 +126,8 @@ class RectFrame:
 # Instr Buff Block
 @dataclass
 class InstrBuff(RectFrame):
-    wave_occupancy: int = -1
-    wave_life: int = -1
+    wave_occupancy: int = None
+    wave_life: int = None
 
     def draw(self, canvas):
         # print("---------", self.x_min, self.y_min, self.x_max, self.y_max)
@@ -306,11 +302,11 @@ class Exec(RectFrame):
 class Wire_E_GLVS(RectFrame):
     text_x_offset: float = 3.0
 
-    lds_req: int = -1
-    vl1_rd: int = -1
-    vl1_wr: int = -1
-    vl1_atomic: int = -1
-    sl1_rd: int = -1
+    lds_req: int = None
+    vl1_rd: int = None
+    vl1_wr: int = None
+    vl1_atomic: int = None
+    sl1_rd: int = None
 
     def draw(self, canvas):
         canvas.text(
@@ -405,8 +401,8 @@ class Wire_InstrBuff_IL1Cache(RectFrame):
 # GDS Block
 @dataclass
 class GDS(RectFrame):
-    gws: int = -1
-    latency: int = -1
+    gws: int = None
+    latency: int = None
 
     def draw(self, canvas):
         canvas.text(self.x_min, self.y_max + 1.0, self.label)
@@ -446,8 +442,8 @@ class GDS(RectFrame):
 # LDS Block
 @dataclass
 class LDS(RectFrame):
-    util: int = -1
-    latency: int = -1
+    util: int = None
+    latency: int = None
 
     def draw(self, canvas):
         canvas.text(self.x_min, self.y_max + 1.0, self.label)
@@ -479,10 +475,10 @@ class LDS(RectFrame):
 # Vector L1 Cache Block
 @dataclass
 class VectorL1Cache(RectFrame):
-    hit: int = -1
-    latency: int = -1
-    coales: int = -1
-    stall: int = -1
+    hit: int = None
+    latency: int = None
+    coales: int = None
+    stall: int = None
 
     def draw(self, canvas):
         canvas.text(self.x_min, self.y_max + 1.0, self.label)
@@ -537,8 +533,8 @@ class VectorL1Cache(RectFrame):
 # Scalar L1D Cache
 @dataclass
 class ScalarL1DCache(RectFrame):
-    hit: int = -1
-    latency: int = -1
+    hit: int = None
+    latency: int = None
 
     def draw(self, canvas):
         canvas.text(self.x_min, self.y_max + 1.0, self.label)
@@ -571,8 +567,8 @@ class ScalarL1DCache(RectFrame):
 # Instr L1 Cache
 @dataclass
 class InstrL1Cache(RectFrame):
-    hit: int = -1
-    latency: int = -1
+    hit: int = None
+    latency: int = None
 
     def draw(self, canvas):
         canvas.text(self.x_min, self.y_max + 1.0, self.label)
@@ -607,13 +603,13 @@ class InstrL1Cache(RectFrame):
 class Wires_L1_L2(RectFrame):
     text_v_x_offset: float = 0.0
 
-    vl1_l2_rd: int = -1
-    vl1_l2_wr: int = -1
-    vl1_l2_atomic: int = -1
-    sl1_l2_rd: int = -1
-    sl1_l2_wr: int = -1
-    sl1_l2_atomic: int = -1
-    il1_l2_req: int = -1
+    vl1_l2_rd: int = None
+    vl1_l2_wr: int = None
+    vl1_l2_atomic: int = None
+    sl1_l2_rd: int = None
+    sl1_l2_wr: int = None
+    sl1_l2_atomic: int = None
+    il1_l2_req: int = None
 
     def draw(self, canvas):
         canvas.text(
@@ -706,12 +702,12 @@ class Wires_L1_L2(RectFrame):
 # L2 Cache
 @dataclass
 class L2Cache(RectFrame):
-    rd: int = -1
-    wr: int = -1
-    atomic: int = -1
-    hit: int = -1
-    rd_lat: int = -1
-    wr_lat: int = -1
+    rd: int = None
+    wr: int = None
+    atomic: int = None
+    hit: int = None
+    rd_lat: int = None
+    wr_lat: int = None
 
     def draw(self, canvas):
         canvas.text(self.x_min, self.y_max + 1.0, self.label)
@@ -799,9 +795,9 @@ class L2Cache(RectFrame):
 class Wire_L2_Fabric(RectFrame):
     text_x_offset: float = 3.0
 
-    rd: int = -1
-    wr: int = -1
-    atomic: int = -1
+    rd: int = None
+    wr: int = None
+    atomic: int = None
 
     def draw(self, canvas):
         canvas.text(
@@ -938,7 +934,7 @@ class MemChart:
         # Fixme: this is temp solution to filter out non-numeric string
         for k, v in metric_dict.items():
             # print(k, type(v))
-            metric_dict[k] = -1 if type(v) == str else v
+            metric_dict[k] = None if type(v) == str else v
 
         # Typically, the drawing order would be: left->right, top->down
 
