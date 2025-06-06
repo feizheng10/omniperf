@@ -57,17 +57,23 @@ def make_format_spec(num, align=">"):
 
 
 def is_value_valid(value):
-    result = False
-    if value is not None and (isinstance(value, float) or isinstance(value, int)):
-        # TODO: add more cretrias to define valid value
-        if int(value) != -1:
-            result = True
+    if value is None:
+        return False
 
-    return result
+    if not isinstance(value, (int, float)):
+        return False
+
+    # Additional criteria to define a valid value
+    if int(round(value)) == -1:
+        return False
+
+    # Add more criteria here if needed
+
+    return True
 
 
 def prepared_text_display(
-    value: int,
+    value,
     key: str = None,
     post_description_with_space: str = "",
     value_step_prec_rightalign=0,
@@ -81,7 +87,7 @@ def prepared_text_display(
         "{val:{format}}".format(val=value, format=value_format)
         if value is is_value_valid(value)
         else "N/A"
-    )  # "{str:>{w}}".format(str="N/A", w=int(value_step_prec_rightalign))
+    )
 
     key_format = (
         make_format_spec(key_step_prec_leftalign, "<") if key is not None else None
@@ -92,16 +98,14 @@ def prepared_text_display(
         else None
     )
 
-    unit_string = ""
-    if is_value_valid(value):
-        unit_string = post_description_with_space
+    unit_string = post_description_with_space if not "N/A" in value_str else ""
 
     result_str_no_unit = (
         "{key}: {value}".format(key=key_str, value=value_str)
         if key is not None
         else "{value}".format(value=value_str)
     )
-    result_str = result_str_no_unit  # + unit_string
+    result_str = result_str_no_unit + unit_string
     return result_str
 
 
