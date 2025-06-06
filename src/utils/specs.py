@@ -39,7 +39,7 @@ import pandas as pd
 
 import config
 from utils.logger import console_debug, console_error, console_log, console_warning
-from utils.mi_gpu_spec import get_gpu_series_dict, get_mi300_chip_id_dict, mi_gpu_specs
+from utils.mi_gpu_spec import mi_gpu_specs
 from utils.tty import get_table_string
 from utils.utils import get_version
 
