@@ -28,12 +28,11 @@ class CenterPanel(Vertical):
 
     def compose(self):
         with TabsTabbedContent(initial="tab-analyze"):
-            with TabPane("Analyze Results", id="tab-analyze"):
+            with TabPane("Basic View", id="tab-analyze"):
                 yield self.analyze_view
             # TODO:
             # with TabPane("placeholder (🚧)", id="tab-1"):
             #     yield Label("🚧 Under Construction")
 
     def on_mount(self) -> None:
-        self.border_title = "CENTER TABS"
         self.add_class("section")
