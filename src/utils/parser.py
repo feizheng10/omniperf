@@ -1283,7 +1283,7 @@ def load_pc_sampling_data(workload, dir, file_prefix, sorting_type):
 
     if pc_sampling_method == None:
         console_warning(
-            "PC sampling: can not dect pc sampling method without %s " % csv_file_path
+            "PC sampling: can not detect pc sampling method without %s " % csv_file_path
         )
         return pd.DataFrame()
 
