@@ -958,14 +958,32 @@ def apply_filters(workload, dir, is_gui, debug):
             kernel_top_df["S"] = ""
             for kernel_id in workload.filter_kernel_ids:
                 # print("------- ", kernel_id)
-                kernels.append(kernel_top_df.loc[kernel_id, "Kernel_Name"])
+                kernels.append(
+                    {
+                        "Kernel_Name": kernel_top_df.loc[kernel_id, "Kernel_Name"],
+                        "Grid_Size": kernel_top_df.loc[kernel_id, "Grid_Size"],
+                        "Workgroup_Size": kernel_top_df.loc[kernel_id, "Workgroup_Size"],
+                    }
+                )
                 kernel_top_df.loc[kernel_id, "S"] = "*"
 
             if kernels:
                 # print("fitlered df:", len(df.index))
-                ret_df = ret_df.loc[
-                    ret_df[schema.pmc_perf_file_prefix]["Kernel_Name"].isin(kernels)
+                # ret_df = ret_df.loc[
+                #     ret_df[schema.pmc_perf_file_prefix]["Kernel_Name"].isin(kernels)
+                # ]
+                # ret_df = ret_df.merge(pd.DataFrame(kernels), on=["Kernel_Name", "Grid_Size", "Workgroup_Size"])
+                ret_df = ret_df[
+                    ret_df[schema.pmc_perf_file_prefix].apply(
+                        lambda row: any(
+                            all(str(row[k]) == str(v) for k, v in f.items())
+                            for f in kernels
+                        ),
+                        axis=1,
+                    )
                 ]
+                # print("~~~~~~~~~~~~~~~", len(ret_df))
+
         elif all(type(kid) == str for kid in workload.filter_kernel_ids):
             df_cleaned = ret_df[schema.pmc_perf_file_prefix]["Kernel_Name"].apply(
                 lambda x: x.strip() if isinstance(x, str) else x
@@ -1439,7 +1457,7 @@ def load_kernel_top(workload, dir, args):
 def load_table_data(workload, dir, is_gui, args, skipKernelTop=False):
     """
     - Load data for all "raw_csv_table"
-    - Load dat for "pc_sampling_table"
+    - Load data for "pc_sampling_table"
     - Calculate mertric value for all "metric_table"
     """
     if not skipKernelTop:

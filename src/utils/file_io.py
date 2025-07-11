@@ -151,12 +151,17 @@ def create_df_kernel_top_stats(
     )
 
     time_stats = pd.concat(
-        [df["Kernel_Name"], (df["End_Timestamp"] - df["Start_Timestamp"])],
-        keys=["Kernel_Name", "ExeTime"],
+        [
+            df["Kernel_Name"],
+            df["Grid_Size"],
+            df["Workgroup_Size"],
+            (df["End_Timestamp"] - df["Start_Timestamp"]),
+        ],
+        keys=["Kernel_Name", "Grid_Size", "Workgroup_Size", "ExeTime"],
         axis=1,
     )
 
-    grouped = time_stats.groupby(by=["Kernel_Name"]).agg(
+    grouped = time_stats.groupby(by=["Kernel_Name", "Grid_Size", "Workgroup_Size"]).agg(
         {"ExeTime": ["count", "sum", "mean", "median"]}
     )
 
